@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Qui est-ce ? Pokémon Édition</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Baloo+2:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="app">
+  <div class="topbar">
+    <div class="lens"></div>
+    <h1 class="pixel" style="font-size:0.95rem;">QUI EST-CE ? POKÉMON</h1>
+    <div class="dots"><span></span><span></span><span></span></div>
+  </div>
+
+  <div class="connection-banner" id="connectionBanner">Connexion au serveur perdue... tentative de reconnexion.</div>
+
+  <!-- ACCUEIL : créer ou rejoindre -->
+  <div id="screen-home" class="screen">
+    <div class="home-inner">
+      <h2 class="pixel">Bienvenue dresseurs !</h2>
+      <p>Chaque joueur choisit en secret un Pokémon que l'autre devra deviner en posant des questions à voix haute. Jouez à distance grâce à un lobby !</p>
+      <div class="home-choices">
+        <div class="choice-card" id="btnGoCreate">
+          <div class="emoji">🎮</div>
+          <h3>Créer un lobby</h3>
+          <p>Deviens l'hôte, choisis les générations de Pokémon et invite ton ami avec un code.</p>
+        </div>
+        <div class="choice-card" id="btnGoJoin">
+          <div class="emoji">🔑</div>
+          <h3>Rejoindre un lobby</h3>
+          <p>Tu as reçu un code de la part d'un ami ? Entre-le ici pour le rejoindre.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CREER -->
+  <div id="screen-create" class="screen hidden">
+    <div class="lobby-inner">
+      <h2 class="pixel">Créer un lobby</h2>
+      <p>Entre ton nom pour créer une partie.</p>
+      <div class="name-fields">
+        <div class="name-field">
+          <label for="createName">Ton nom</label>
+          <input id="createName" type="text" maxlength="16" placeholder="Ton nom">
+        </div>
+      </div>
+      <button class="btn btn-red btn-lg" id="btnCreateSubmit">Créer le lobby</button>
+      <div class="error-msg" id="createError"></div>
+      <span class="back-link" id="backFromCreate">&larr; Retour</span>
+    </div>
+  </div>
+
+  <!-- REJOINDRE -->
+  <div id="screen-join" class="screen hidden">
+    <div class="lobby-inner">
+      <h2 class="pixel">Rejoindre un lobby</h2>
+      <p>Entre le code partagé par ton ami ainsi que ton nom.</p>
+      <div class="name-fields">
+        <div class="name-field">
+          <label for="joinCode">Code du lobby</label>
+          <input id="joinCode" class="code-input" type="text" maxlength="4" placeholder="XXXX">
+        </div>
+        <div class="name-field">
+          <label for="joinName">Ton nom</label>
+          <input id="joinName" type="text" maxlength="16" placeholder="Ton nom">
+        </div>
+      </div>
+      <button class="btn btn-blue btn-lg" id="btnJoinSubmit">Rejoindre</button>
+      <div class="error-msg" id="joinError"></div>
+      <span class="back-link" id="backFromJoin">&larr; Retour</span>
+    </div>
+  </div>
+
+  <!-- SALLE D'ATTENTE -->
+  <div id="screen-waiting" class="screen hidden">
+    <div class="waiting-inner">
+      <h2>Salle d'attente</h2>
+      <div class="room-code-box">
+        <span>Code du lobby :</span>
+        <span class="code" id="roomCodeDisplay">----</span>
+        <button id="btnCopyCode" type="button">Copier</button>
+      </div>
+      <div class="players-status" id="playersStatus"></div>
+
+      <div id="hostGenPicker" class="gen-picker hidden">
+        <h3 class="pixel" style="font-size:0.85rem;">Choisis les générations</h3>
+        <p class="gen-hint">Sélectionne une ou plusieurs générations de Pokémon qui apparaîtront sur la grille.</p>
+        <div class="gen-grid" id="genGrid"></div>
+      </div>
+      <div id="guestGenInfo" class="gen-readonly hidden"></div>
+
+      <button class="btn btn-green btn-lg hidden" id="btnStartGame">Démarrer la partie</button>
+      <p class="pick-wait-msg hidden" id="waitingForHostMsg">En attente que l'hôte lance la partie...</p>
+      <div class="error-msg" id="waitingError"></div>
+      <span class="back-link" id="backFromWaiting">&larr; Quitter le lobby</span>
+    </div>
+  </div>
+
+  <!-- CHOIX DU SECRET -->
+  <div id="screen-pick" class="screen hidden">
+    <div class="pick-top">
+      <h2 class="pixel" style="font-size:1rem;">Choisis ton Pokémon secret</h2>
+      <p>Clique sur le Pokémon que ton adversaire devra deviner. Ce choix reste secret jusqu'à la fin de la partie.</p>
+    </div>
+    <div class="grid" id="pickGrid"></div>
+    <p class="pick-wait-msg hidden" id="pickWaitMsg">En attente du choix de ton adversaire...</p>
+  </div>
+
+  <!-- PARTIE -->
+  <div id="screen-game" class="screen hidden">
+    <div class="game-header">
+      <div class="secret-panel">
+        <img id="ownSecretImg" src="" alt="secret">
+        <div>
+          <span class="secret-label pixel">TON SECRET (à faire deviner)</span>
+          <span class="secret-name" id="ownSecretName">-</span>
+        </div>
+      </div>
+      <div class="turn-indicator">
+        <span id="turnPlayerName">Joueur 1</span>, à toi de jouer !
+        <span class="pixel-sub" id="turnSub">Pose tes questions à voix haute</span>
+      </div>
+    </div>
+
+    <div class="guess-banner" id="guessBanner">Mode DEVINER activé : clique sur le Pokémon que tu penses être le secret de l'adversaire !</div>
+    <div class="not-your-turn-banner" id="notYourTurnBanner">Ce n'est pas ton tour, patiente un instant...</div>
+
+    <div class="grid" id="mainGrid"></div>
+
+    <div class="controls">
+      <button class="btn btn-yellow" id="btnGuess">Deviner</button>
+      <button class="btn btn-grey hidden" id="btnCancelGuess">Annuler</button>
+      <button class="btn btn-blue" id="btnPass">Passer le tour</button>
+    </div>
+  </div>
+
+  <!-- VICTOIRE -->
+  <div id="screen-victory" class="screen hidden">
+    <div class="trophy">🏆</div>
+    <h2 class="pixel" id="victoryTitle">VICTOIRE !</h2>
+    <p id="victoryText">Bravo !</p>
+    <div class="victory-secret">
+      <img id="victorySecretImg" src="" alt="">
+      <div>
+        <div style="font-size:0.8rem;color:#555;">Le Pokémon secret était</div>
+        <div id="victorySecretName" style="font-weight:800;font-size:1.2rem;">-</div>
+      </div>
+    </div>
+    <div class="replay-row">
+      <button class="btn btn-green" id="btnReplay">Rejouer avec les mêmes générations</button>
+    </div>
+    <div class="replay-status" id="replayStatus">En attente des deux joueurs...</div>
+  </div>
+
+  <div class="footer-note">Sprites officiels via PokeAPI · Jeu multijoueur en ligne, invite un ami avec un code de lobby.</div>
+</div>
+
+<div id="modalRoot"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/game.js"></script>
+</body>
+</html>
