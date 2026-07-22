@@ -1,19 +1,10 @@
-{
-  "name": "qui-est-ce-pokemon",
-  "version": "1.0.0",
-  "description": "Qui est-ce ? Pokémon Édition - jeu multijoueur en ligne avec lobby",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "dependencies": {
-    "express": "^4.19.2",
-    "socket.io": "^4.7.5"
-  },
-  "devDependencies": {
-    "socket.io-client": "^4.8.3"
-  }
-}
+services:
+  - type: web
+    name: qui-est-ce-pokemon
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 18.19.0
