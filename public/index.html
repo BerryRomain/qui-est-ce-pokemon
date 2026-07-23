@@ -93,6 +93,13 @@
         <p class="gen-hint">Sélectionne une ou plusieurs générations de Pokémon qui apparaîtront sur la grille.</p>
         <div class="gen-grid" id="genGrid"></div>
       </div>
+
+      <div id="hostGridModePicker" class="grid-mode-picker hidden">
+        <h3 class="pixel" style="font-size:0.85rem;">Mode de grille</h3>
+        <p class="gen-hint">Choisis la taille de la grille de jeu.</p>
+        <div class="grid-mode-options" id="gridModeOptions"></div>
+      </div>
+
       <div id="guestGenInfo" class="gen-readonly hidden"></div>
 
       <button class="btn btn-green btn-lg hidden" id="btnStartGame">Démarrer la partie</button>
@@ -107,6 +114,7 @@
     <div class="pick-top">
       <h2 class="pixel" style="font-size:1rem;">Choisis ton Pokémon secret</h2>
       <p>Clique sur le Pokémon que ton adversaire devra deviner. Ce choix reste secret jusqu'à la fin de la partie.</p>
+      <button class="btn btn-yellow" id="btnRandomPick">🎲 Choisir au hasard</button>
     </div>
     <div class="grid" id="pickGrid"></div>
     <p class="pick-wait-msg hidden" id="pickWaitMsg">En attente du choix de ton adversaire...</p>
@@ -153,7 +161,7 @@
       </div>
     </div>
     <div class="replay-row">
-      <button class="btn btn-green" id="btnReplay">Rejouer avec les mêmes générations</button>
+      <button class="btn btn-green" id="btnReplay">Rejouer (modifier les paramètres)</button>
     </div>
     <div class="replay-status" id="replayStatus">En attente des deux joueurs...</div>
   </div>

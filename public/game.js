@@ -31,12 +31,18 @@
     );
   }
 
+  var GRID_MODE_INFO = {
+    normal: { label: "Grille normale", desc: "48 Pokémon tirés au hasard" },
+    mega: { label: "Méga grille", desc: "Tous les Pokémon des générations choisies" },
+  };
+
   // ---------- État local ----------
   var myPlayerNum = null;
   var roomCode = null;
   var isHost = false;
   var availableGenerations = []; // [{id,count}]
   var selectedGenerations = [1];
+  var selectedGridMode = "normal";
   var gamePokemons = [];
   var localFlipped = {}; // id -> bool (mémo personnel, pas partagé)
   var myPickedSecret = null;
@@ -68,6 +74,14 @@
     myPlayerNum = null;
     roomCode = null;
     isHost = false;
+    gamePokemons = [];
+    localFlipped = {};
+    myPickedSecret = null;
+    currentPlayer = 1;
+    guessMode = false;
+  }
+
+  function resetRoundState() {
     gamePokemons = [];
     localFlipped = {};
     myPickedSecret = null;
@@ -182,10 +196,49 @@
     socket.emit("set_generations", { code: roomCode, generations: selectedGenerations });
   }
 
+  function buildGridModePicker() {
+    var container = document.getElementById("gridModeOptions");
+    container.innerHTML = "";
+    Object.keys(GRID_MODE_INFO).forEach(function (modeKey) {
+      var info = GRID_MODE_INFO[modeKey];
+      var label = document.createElement("label");
+      label.className = "grid-mode-option" + (selectedGridMode === modeKey ? " checked" : "");
+      var input = document.createElement("input");
+      input.type = "radio";
+      input.name = "gridModeChoice";
+      input.value = modeKey;
+      input.checked = selectedGridMode === modeKey;
+      input.addEventListener("change", function () {
+        if (input.checked) toggleGridMode(modeKey);
+      });
+      var span = document.createElement("span");
+      span.innerHTML =
+        '<span class="gm-label">' +
+        info.label +
+        "</span>" +
+        '<span class="gm-desc">' +
+        info.desc +
+        "</span>";
+      label.appendChild(input);
+      label.appendChild(span);
+      container.appendChild(label);
+    });
+  }
+
+  function toggleGridMode(modeKey) {
+    selectedGridMode = modeKey;
+    document.querySelectorAll(".grid-mode-option").forEach(function (el) {
+      var input = el.querySelector("input");
+      el.classList.toggle("checked", input.value === modeKey);
+    });
+    socket.emit("set_grid_mode", { code: roomCode, gridMode: modeKey });
+  }
+
   function renderWaitingRoom(room) {
     document.getElementById("roomCodeDisplay").textContent = room.code;
     roomCode = room.code;
     if (room.generations) selectedGenerations = room.generations.slice();
+    if (room.gridMode) selectedGridMode = room.gridMode;
 
     var statusEl = document.getElementById("playersStatus");
     statusEl.innerHTML = "";
@@ -204,28 +257,34 @@
     });
 
     var hostPicker = document.getElementById("hostGenPicker");
+    var hostGridModePicker = document.getElementById("hostGridModePicker");
     var guestInfo = document.getElementById("guestGenInfo");
     var startBtn = document.getElementById("btnStartGame");
     var waitMsg = document.getElementById("waitingForHostMsg");
 
     if (isHost) {
       hostPicker.classList.remove("hidden");
+      hostGridModePicker.classList.remove("hidden");
       guestInfo.classList.add("hidden");
       buildGenGrid();
+      buildGridModePicker();
       var bothHere = room.players[1] && room.players[1].connected && room.players[2] && room.players[2].connected;
       startBtn.classList.remove("hidden");
       startBtn.disabled = !bothHere;
       waitMsg.classList.add("hidden");
     } else {
       hostPicker.classList.add("hidden");
+      hostGridModePicker.classList.add("hidden");
       guestInfo.classList.remove("hidden");
+      var gridModeInfo = GRID_MODE_INFO[room.gridMode] || GRID_MODE_INFO.normal;
       guestInfo.innerHTML =
         "Générations choisies par l'hôte : " +
         room.generations
           .map(function (g) {
             return '<span class="tag">Gen ' + g + "</span>";
           })
-          .join(" ");
+          .join(" ") +
+        '<br><span class="tag">' + gridModeInfo.label + "</span>";
       startBtn.classList.add("hidden");
       waitMsg.classList.remove("hidden");
     }
@@ -261,6 +320,14 @@
     }
   });
 
+  // Après un vote de revanche unanime, le serveur renvoie tout le monde
+  // dans la salle d'attente pour permettre de modifier les paramètres.
+  socket.on("return_to_lobby", function (room) {
+    resetRoundState();
+    renderWaitingRoom(room);
+    showOnly("waiting");
+  });
+
   // ---------- Phase de choix du secret ----------
   socket.on("game_started", function (data) {
     gamePokemons = data.gamePokemons;
@@ -272,6 +339,8 @@
 
   function renderPickScreen() {
     document.getElementById("pickWaitMsg").classList.add("hidden");
+    var randomBtn = document.getElementById("btnRandomPick");
+    if (randomBtn) randomBtn.disabled = false;
     var grid = document.getElementById("pickGrid");
     grid.innerHTML = "";
     gamePokemons.forEach(function (poke) {
@@ -281,6 +350,21 @@
       });
       grid.appendChild(card);
     });
+  }
+
+  function lockPickScreenAfterChoice() {
+    document.getElementById("pickGrid").querySelectorAll(".card").forEach(function (c) {
+      c.classList.add("picked-locked");
+    });
+    document.getElementById("pickWaitMsg").classList.remove("hidden");
+    var randomBtn = document.getElementById("btnRandomPick");
+    if (randomBtn) randomBtn.disabled = true;
+  }
+
+  function confirmSecretPick(poke) {
+    myPickedSecret = poke;
+    socket.emit("pick_secret", { code: roomCode, pokemonId: poke.id });
+    lockPickScreenAfterChoice();
   }
 
   function openPickConfirmModal(poke) {
@@ -312,13 +396,18 @@
     };
     yesBtn.onclick = function () {
       modalRoot.innerHTML = "";
-      myPickedSecret = poke;
-      socket.emit("pick_secret", { code: roomCode, pokemonId: poke.id });
-      document.getElementById("pickGrid").querySelectorAll(".card").forEach(function (c) {
-        c.classList.add("picked-locked");
-      });
-      document.getElementById("pickWaitMsg").classList.remove("hidden");
+      confirmSecretPick(poke);
     };
+  }
+
+  var btnRandomPick = document.getElementById("btnRandomPick");
+  if (btnRandomPick) {
+    btnRandomPick.addEventListener("click", function () {
+      if (myPickedSecret || !gamePokemons.length) return;
+      var randomIndex = Math.floor(Math.random() * gamePokemons.length);
+      var poke = gamePokemons[randomIndex];
+      confirmSecretPick(poke);
+    });
   }
 
   // ---------- Partie principale ----------
@@ -480,7 +569,7 @@
     var c1 = p1 && p1.replayReady;
     var c2 = p2 && p2.replayReady;
     if (c1 && c2) {
-      status.textContent = "Les deux joueurs sont prêts, nouvelle partie en cours...";
+      status.textContent = "Les deux joueurs sont prêts, retour à la salle d'attente...";
     } else if (c1 || c2) {
       var readyName = c1 ? p1.name : p2.name;
       status.textContent = readyName + " est prêt(e). En attente de l'autre joueur...";
@@ -492,6 +581,7 @@
   // ---------- Reconnexion / resynchronisation ----------
   socket.on("resync", function (data) {
     selectedGenerations = data.generations.slice();
+    if (data.gridMode) selectedGridMode = data.gridMode;
     gamePokemons = data.gamePokemons || [];
     currentPlayer = data.currentPlayer;
     guessMode = data.guessMode;
@@ -500,10 +590,7 @@
     if (data.status === "picking") {
       if (myPickedSecret) {
         renderPickScreen();
-        document.getElementById("pickGrid").querySelectorAll(".card").forEach(function (c) {
-          c.classList.add("picked-locked");
-        });
-        document.getElementById("pickWaitMsg").classList.remove("hidden");
+        lockPickScreenAfterChoice();
       } else {
         renderPickScreen();
       }

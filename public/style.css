@@ -252,6 +252,39 @@ html,body{
   font-size:0.85rem;
 }
 
+/* GRID MODE PICKER (Grille normale / Méga grille) */
+.grid-mode-picker{
+  margin:8px 0 22px;
+  text-align:left;
+  max-width:520px;
+  margin-left:auto;
+  margin-right:auto;
+}
+.grid-mode-picker h3{ text-align:center; color:var(--pd-blue-dark); font-size:1rem; margin-bottom:4px;}
+.grid-mode-picker .gen-hint{ text-align:center; font-size:0.85rem; color:#666; margin-top:0; margin-bottom:14px;}
+.grid-mode-options{
+  display:flex;
+  gap:12px;
+  justify-content:center;
+  flex-wrap:wrap;
+}
+.grid-mode-option{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  background:#fff;
+  border:3px solid var(--pd-dark);
+  border-radius:12px;
+  padding:10px 16px;
+  cursor:pointer;
+  user-select:none;
+  min-width:200px;
+}
+.grid-mode-option.checked{ background:#e5f2ff; border-color:var(--pd-blue); box-shadow:0 0 0 2px var(--pd-blue) inset;}
+.grid-mode-option input{ width:18px; height:18px; }
+.grid-mode-option .gm-label{ font-weight:700; font-size:0.92rem; display:block;}
+.grid-mode-option .gm-desc{ font-size:0.72rem; color:#777; display:block; }
+
 /* BUTTONS */
 .btn{
   font-family:'Baloo 2', cursive;
@@ -279,6 +312,7 @@ html,body{
 .pick-top{ text-align:center; }
 .pick-top h2{ color:var(--pd-red); margin-bottom:4px; font-size:1.2rem;}
 .pick-top p{ color:#555; margin-top:0; }
+.pick-top .btn{ margin-top:6px; margin-bottom:6px; padding:10px 20px; font-size:0.95rem; }
 #pickGrid{ margin-top:18px; }
 .pick-wait-msg{
   text-align:center;

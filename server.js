@@ -10,6 +10,7 @@ const PORT = process.env.PORT || 3000;
 const GRID_SIZE = 48;
 const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sans caractères ambigus (0,O,1,I)
 const ROOM_TTL_MS = 1000 * 60 * 60 * 4; // 4h d'inactivité -> nettoyage
+const GRID_MODES = ["normal", "mega"];
 
 // ---------- Chargement des données Pokémon par génération ----------
 const POKEMON_BY_GEN = JSON.parse(
@@ -45,9 +46,14 @@ function buildPool(generations) {
   return pool;
 }
 
-function pickGrid(generations) {
+// mode "normal" -> grille limitée à GRID_SIZE Pokémon tirés au hasard
+// mode "mega"   -> grille contenant l'intégralité des Pokémon des générations choisies
+function pickGrid(generations, mode) {
   const pool = buildPool(generations);
   const shuffled = shuffle(pool);
+  if (mode === "mega") {
+    return shuffled;
+  }
   const size = Math.min(GRID_SIZE, shuffled.length);
   return shuffle(shuffled.slice(0, size));
 }
@@ -63,10 +69,14 @@ function makeRoomCode() {
   return code;
 }
 
+function randomStartingPlayer() {
+  return Math.random() < 0.5 ? 1 : 2;
+}
+
 // ---------- État des rooms en mémoire ----------
 // rooms: Map<code, room>
 // room = {
-//   code, generations:[1], status:'lobby'|'picking'|'playing'|'victory',
+//   code, generations:[1], gridMode:'normal'|'mega', status:'lobby'|'picking'|'playing'|'victory',
 //   players: { 1:{socketId,name,connected,secret,replayReady}, 2:{...} },
 //   gamePokemons: [{id,name}], currentPlayer:1, guessMode:false,
 //   winner:null, secretFound:null, lastActivity: Date.now()
@@ -88,6 +98,7 @@ function roomSummary(room) {
     code: room.code,
     status: room.status,
     generations: room.generations,
+    gridMode: room.gridMode,
     players: publicPlayers(room),
   };
 }
@@ -132,6 +143,7 @@ io.on("connection", (socket) => {
     const room = {
       code,
       generations: [1],
+      gridMode: "normal",
       status: "lobby",
       players: {
         1: { socketId: socket.id, name: (name || "Joueur 1").slice(0, 16), connected: true, secret: null, replayReady: false },
@@ -202,6 +214,16 @@ io.on("connection", (socket) => {
     io.to(code).emit("players_update", roomSummary(room));
   });
 
+  socket.on("set_grid_mode", ({ code, gridMode }) => {
+    const room = rooms.get(code);
+    const info = socketToRoom.get(socket.id);
+    if (!room || !info || info.playerNum !== 1) return; // seul l'hôte choisit
+    if (!GRID_MODES.includes(gridMode)) return;
+    room.gridMode = gridMode;
+    touch(room);
+    io.to(code).emit("players_update", roomSummary(room));
+  });
+
   socket.on("start_game", ({ code }) => {
     const room = rooms.get(code);
     const info = socketToRoom.get(socket.id);
@@ -210,7 +232,7 @@ io.on("connection", (socket) => {
       socket.emit("error_message", { message: "Il faut deux joueurs pour commencer." });
       return;
     }
-    const grid = pickGrid(room.generations);
+    const grid = pickGrid(room.generations, room.gridMode);
     if (grid.length < 4) {
       socket.emit("error_message", { message: "Pas assez de Pokémon dans les générations choisies." });
       return;
@@ -221,7 +243,7 @@ io.on("connection", (socket) => {
     room.players[1].replayReady = false;
     room.players[2].replayReady = false;
     room.status = "picking";
-    room.currentPlayer = 1;
+    room.currentPlayer = randomStartingPlayer();
     room.guessMode = false;
     room.winner = null;
     room.secretFound = null;
@@ -247,7 +269,6 @@ io.on("connection", (socket) => {
       p2 = room.players[2];
     if (p1 && p2 && p1.secret && p2.secret) {
       room.status = "playing";
-      room.currentPlayer = 1;
       room.guessMode = false;
       io.to(code).emit("game_ready", buildGameStatePayload(room));
     }
@@ -308,6 +329,10 @@ io.on("connection", (socket) => {
     }
   });
 
+  // Vote de revanche : une fois les deux joueurs prêts, on ne relance pas
+  // directement la partie. On renvoie tout le monde en salle d'attente pour
+  // permettre à l'hôte de modifier générations / mode de grille avant de
+  // cliquer à nouveau sur "Démarrer la partie".
   socket.on("replay_vote", ({ code }) => {
     const room = rooms.get(code);
     const info = socketToRoom.get(socket.id);
@@ -319,21 +344,18 @@ io.on("connection", (socket) => {
     const p1 = room.players[1],
       p2 = room.players[2];
     if (p1 && p2 && p1.replayReady && p2.replayReady) {
-      const grid = pickGrid(room.generations);
-      room.gamePokemons = grid;
+      room.gamePokemons = [];
       room.players[1].secret = null;
       room.players[2].secret = null;
       room.players[1].replayReady = false;
       room.players[2].replayReady = false;
-      room.status = "picking";
+      room.status = "lobby";
       room.currentPlayer = 1;
       room.guessMode = false;
       room.winner = null;
       room.secretFound = null;
-      io.to(code).emit("game_started", {
-        gamePokemons: room.gamePokemons,
-        players: publicPlayers(room),
-      });
+      touch(room);
+      io.to(code).emit("return_to_lobby", roomSummary(room));
     }
   });
 
@@ -384,6 +406,7 @@ function buildResyncPayload(room, forPlayerNum) {
   return {
     status: room.status,
     generations: room.generations,
+    gridMode: room.gridMode,
     gamePokemons: room.gamePokemons,
     currentPlayer: room.currentPlayer,
     guessMode: room.guessMode,
