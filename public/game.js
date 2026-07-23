@@ -156,6 +156,11 @@
       })
       .join("");
 
+    var genusDisplay = data.genus || "";
+    if (genusDisplay && !/^pok[ée]mon\b/i.test(genusDisplay)) {
+      genusDisplay = "Pokémon " + genusDisplay;
+    }
+
     box.innerHTML =
       "<button type='button' class='pokedex-close-btn' id='pokedexCloseBtn' aria-label='Fermer'>&times;</button>" +
       "<div class='pokedex-header'>" +
@@ -164,7 +169,7 @@
       "<div class='pokedex-number'>" + numberStr + "</div>" +
       "<div class='pokedex-name'>" + poke.name + "</div>" +
       "<div class='pokedex-types'>" + typesHtml + "</div>" +
-      (data.genus ? "<div class='pokedex-category'>" + data.genus + "</div>" : "") +
+      (genusDisplay ? "<div class='pokedex-category'>" + genusDisplay + "</div>" : "") +
       "</div>" +
       "</div>" +
       "<div class='pokedex-stats'>" +
