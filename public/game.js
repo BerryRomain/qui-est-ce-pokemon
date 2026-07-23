@@ -55,11 +55,25 @@
     steel: "#B8B8D0", fairy: "#EE99AC",
   };
   var EGG_GROUP_FR = {
-    monster: "Monstre", "water1": "Groupe eau 1", "water2": "Groupe eau 2",
-    "water3": "Groupe eau 3", bug: "Insecte", flying: "Vol", field: "Terrestre",
-    fairy: "Fée", plant: "Végétal", grass: "Végétal", "humanshape": "Humanoïde",
-    "human-like": "Humanoïde", mineral: "Minéral", amorphous: "Amorphe",
-    ditto: "Ditto", dragon: "Dragon", "no-eggs": "Aucun (indéterminé)",
+    monster: "Monstrueux",
+    "water1": "Groupe Aquatique 1",
+    "water2": "Groupe Aquatique 2",
+    "water3": "Groupe Aquatique 3",
+    bug: "Insectoïde",
+    flying: "Aérien",
+    ground: "Terrestre",
+    field: "Terrestre",
+    fairy: "Féerique",
+    plant: "Végétal",
+    grass: "Végétal",
+    humanlike: "Humanoïde",
+    "human-like": "Humanoïde",
+    mineral: "Minéral",
+    indeterminate: "Amorphe",
+    amorphous: "Amorphe",
+    ditto: "Métamorph",
+    dragon: "Draconique",
+    "no-eggs": "Aucun (indéterminé)",
     undiscovered: "Aucun (indéterminé)",
   };
   var COLOR_FR = {
@@ -150,7 +164,7 @@
       "<div class='pokedex-number'>" + numberStr + "</div>" +
       "<div class='pokedex-name'>" + poke.name + "</div>" +
       "<div class='pokedex-types'>" + typesHtml + "</div>" +
-      (data.genus ? "<div class='pokedex-category'>Pokémon " + data.genus + "</div>" : "") +
+      (data.genus ? "<div class='pokedex-category'>" + data.genus + "</div>" : "") +
       "</div>" +
       "</div>" +
       "<div class='pokedex-stats'>" +
