@@ -31,6 +31,192 @@
     );
   }
 
+  function criesUrl(id) {
+    return (
+      "https://raw.githubusercontent.com/PokeAPI/cries/main/cries/pokemon/latest/" +
+      id +
+      ".ogg"
+    );
+  }
+
+  // ---------- Mini Pokédex : traductions & couleurs ----------
+  var TYPE_FR = {
+    normal: "Normal", fire: "Feu", water: "Eau", electric: "Électrik",
+    grass: "Plante", ice: "Glace", fighting: "Combat", poison: "Poison",
+    ground: "Sol", flying: "Vol", psychic: "Psy", bug: "Insecte",
+    rock: "Roche", ghost: "Spectre", dragon: "Dragon", dark: "Ténèbres",
+    steel: "Acier", fairy: "Fée",
+  };
+  var TYPE_COLORS = {
+    normal: "#A8A878", fire: "#F08030", water: "#6890F0", electric: "#F8D030",
+    grass: "#78C850", ice: "#98D8D8", fighting: "#C03028", poison: "#A040A0",
+    ground: "#E0C068", flying: "#A890F0", psychic: "#F85888", bug: "#A8B820",
+    rock: "#B8A038", ghost: "#705898", dragon: "#7038F8", dark: "#705848",
+    steel: "#B8B8D0", fairy: "#EE99AC",
+  };
+  var EGG_GROUP_FR = {
+    monster: "Monstre", "water1": "Groupe eau 1", "water2": "Groupe eau 2",
+    "water3": "Groupe eau 3", bug: "Insecte", flying: "Vol", field: "Terrestre",
+    fairy: "Fée", plant: "Végétal", grass: "Végétal", "humanshape": "Humanoïde",
+    "human-like": "Humanoïde", mineral: "Minéral", amorphous: "Amorphe",
+    ditto: "Ditto", dragon: "Dragon", "no-eggs": "Aucun (indéterminé)",
+    undiscovered: "Aucun (indéterminé)",
+  };
+  var COLOR_FR = {
+    black: "Noir", blue: "Bleu", brown: "Marron", gray: "Gris", grey: "Gris",
+    green: "Vert", pink: "Rose", purple: "Violet", red: "Rouge",
+    white: "Blanc", yellow: "Jaune",
+  };
+
+  var pokedexCache = {};
+
+  function fetchPokedexData(id) {
+    if (pokedexCache[id]) return Promise.resolve(pokedexCache[id]);
+    var pokeUrl = "https://pokeapi.co/api/v2/pokemon/" + id + "/";
+    var speciesUrl = "https://pokeapi.co/api/v2/pokemon-species/" + id + "/";
+    return Promise.all([
+      fetch(pokeUrl).then(function (r) {
+        if (!r.ok) throw new Error("pokemon fetch failed");
+        return r.json();
+      }),
+      fetch(speciesUrl).then(function (r) {
+        if (!r.ok) throw new Error("species fetch failed");
+        return r.json();
+      }),
+    ]).then(function (results) {
+      var p = results[0],
+        s = results[1];
+      var genus = "";
+      (s.genera || []).forEach(function (g) {
+        if (g.language && g.language.name === "fr") genus = g.genus;
+      });
+      var eggGroups = (s.egg_groups || []).map(function (eg) {
+        return EGG_GROUP_FR[eg.name] || eg.name;
+      });
+      var colorName = s.color ? COLOR_FR[s.color.name] || s.color.name : "-";
+      var types = (p.types || [])
+        .slice()
+        .sort(function (a, b) {
+          return a.slot - b.slot;
+        })
+        .map(function (t) {
+          return t.type.name;
+        });
+      var data = {
+        id: id,
+        height: typeof p.height === "number" ? p.height / 10 : null,
+        weight: typeof p.weight === "number" ? p.weight / 10 : null,
+        types: types,
+        genus: genus,
+        eggGroups: eggGroups,
+        color: colorName,
+        captureRate: typeof s.capture_rate === "number" ? s.capture_rate : null,
+        genderRate: typeof s.gender_rate === "number" ? s.gender_rate : null,
+      };
+      pokedexCache[id] = data;
+      return data;
+    });
+  }
+
+  function genderStatHtml(genderRate) {
+    if (genderRate === null) return "Inconnu";
+    if (genderRate === -1) return "Asexué (sans genre)";
+    var femalePct = Math.round((genderRate / 8) * 100);
+    var malePct = 100 - femalePct;
+    return (
+      "<div>♂ " + malePct + "% &nbsp;/&nbsp; ♀ " + femalePct + "%</div>" +
+      "<div class='gender-bar'>" +
+      "<span class='male-part' style='flex:" + malePct + "'></span>" +
+      "<span class='female-part' style='flex:" + femalePct + "'></span>" +
+      "</div>"
+    );
+  }
+
+  function renderPokedexBox(box, poke, data) {
+    var numberStr = "#" + String(poke.id).padStart(4, "0");
+    var typesHtml = data.types
+      .map(function (t) {
+        var color = TYPE_COLORS[t] || "#888";
+        var label = TYPE_FR[t] || t;
+        return "<span class='type-badge' style='background:" + color + "'>" + label + "</span>";
+      })
+      .join("");
+
+    box.innerHTML =
+      "<button type='button' class='pokedex-close-btn' id='pokedexCloseBtn' aria-label='Fermer'>&times;</button>" +
+      "<div class='pokedex-header'>" +
+      "<img src='" + spriteUrl(poke.id) + "' alt='" + poke.name + "'>" +
+      "<div>" +
+      "<div class='pokedex-number'>" + numberStr + "</div>" +
+      "<div class='pokedex-name'>" + poke.name + "</div>" +
+      "<div class='pokedex-types'>" + typesHtml + "</div>" +
+      (data.genus ? "<div class='pokedex-category'>Pokémon " + data.genus + "</div>" : "") +
+      "</div>" +
+      "</div>" +
+      "<div class='pokedex-stats'>" +
+      "<div class='pokedex-stat'><span class='stat-label'>Taille</span><span class='stat-value'>" +
+      (data.height != null ? data.height.toFixed(1) + " m" : "-") +
+      "</span></div>" +
+      "<div class='pokedex-stat'><span class='stat-label'>Poids</span><span class='stat-value'>" +
+      (data.weight != null ? data.weight.toFixed(1) + " kg" : "-") +
+      "</span></div>" +
+      "<div class='pokedex-stat'><span class='stat-label'>Couleur</span><span class='stat-value'>" +
+      data.color +
+      "</span></div>" +
+      "<div class='pokedex-stat'><span class='stat-label'>Taux de capture</span><span class='stat-value'>" +
+      (data.captureRate != null ? data.captureRate : "-") +
+      "</span></div>" +
+      "<div class='pokedex-stat wide'><span class='stat-label'>Groupe(s) d'œufs</span><span class='stat-value'>" +
+      (data.eggGroups.length ? data.eggGroups.join(", ") : "-") +
+      "</span></div>" +
+      "<div class='pokedex-stat wide'><span class='stat-label'>Répartition des genres</span><span class='stat-value'>" +
+      genderStatHtml(data.genderRate) +
+      "</span></div>" +
+      "</div>" +
+      "<div class='pokedex-cry'>" +
+      "<span class='cry-label'>Cri officiel</span>" +
+      "<audio controls preload='none' src='" + criesUrl(poke.id) + "'>Ton navigateur ne supporte pas la lecture audio.</audio>" +
+      "</div>";
+
+    var closeBtn = document.getElementById("pokedexCloseBtn");
+    if (closeBtn) {
+      closeBtn.onclick = function () {
+        modalRoot.innerHTML = "";
+      };
+    }
+  }
+
+  function openPokedexModal(poke) {
+    modalRoot.innerHTML = "";
+    var overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    var box = document.createElement("div");
+    box.className = "modal-box pokedex-box";
+    box.innerHTML = "<div class='pokedex-loading'>Chargement de la fiche Pokédex...</div>";
+    overlay.appendChild(box);
+    modalRoot.appendChild(overlay);
+
+    overlay.addEventListener("click", function (e) {
+      if (e.target === overlay) modalRoot.innerHTML = "";
+    });
+
+    fetchPokedexData(poke.id)
+      .then(function (data) {
+        renderPokedexBox(box, poke, data);
+      })
+      .catch(function () {
+        box.innerHTML =
+          "<div class='pokedex-loading'>Impossible de charger les informations du Pokédex pour le moment.</div>" +
+          "<div class='modal-actions'><button type='button' class='btn btn-grey' id='pokedexCloseErrBtn'>Fermer</button></div>";
+        var closeBtn = document.getElementById("pokedexCloseErrBtn");
+        if (closeBtn) {
+          closeBtn.onclick = function () {
+            modalRoot.innerHTML = "";
+          };
+        }
+      });
+  }
+
   var GRID_MODE_INFO = {
     normal: { label: "Grille normale", desc: "48 Pokémon tirés au hasard" },
     mega: { label: "Méga grille", desc: "Tous les Pokémon des générations choisies" },
@@ -444,6 +630,20 @@
     inner.appendChild(front);
     inner.appendChild(back);
     card.appendChild(inner);
+
+    var infoBtn = document.createElement("button");
+    infoBtn.type = "button";
+    infoBtn.className = "info-btn";
+    infoBtn.textContent = "i";
+    infoBtn.setAttribute("aria-label", "Voir la fiche Pokédex de " + pokeData.name);
+    infoBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      e.preventDefault();
+      openPokedexModal(pokeData);
+    });
+    // Bouton positionné en dehors de la carte à effet 3D (card-inner) afin de
+    // rester lisible et cliquable quelle que soit la face affichée.
+    card.appendChild(infoBtn);
 
     if (faceUpForced === false) card.classList.add("flipped");
     return card;
