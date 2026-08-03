@@ -842,10 +842,10 @@
     var waitMsg = document.getElementById("dcWaitMsg");
 
     // Réinitialisation propre avant d'appliquer l'état de la phase
-    myDot.className = "dc-dot dc-dot-mine hidden";
-    myNeedle.className = "dc-needle dc-needle-mine hidden";
-    otherDot.className = "dc-dot dc-dot-other hidden";
-    otherNeedle.className = "dc-needle dc-needle-other hidden";
+    myDot.setAttribute("class", "dc-dot dc-dot-mine hidden");
+    myNeedle.setAttribute("class", "dc-needle dc-needle-mine hidden");
+    otherDot.setAttribute("class", "dc-dot dc-dot-other hidden");
+    otherNeedle.setAttribute("class", "dc-needle dc-needle-other hidden");
     btnValidateMaster.classList.add("hidden");
     btnValidateGuesser.classList.add("hidden");
     btnContinue.classList.add("hidden");
