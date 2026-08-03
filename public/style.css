@@ -416,6 +416,30 @@ html,body{
 .card-front{
   background:#ffffff;
 }
+.card-info-btn{
+  position:absolute;
+  top:6px;
+  right:6px;
+  width:22px;
+  height:22px;
+  border-radius:50%;
+  background:var(--pd-blue);
+  color:#fff;
+  border:2px solid var(--pd-dark);
+  font-family:'Baloo 2', cursive;
+  font-weight:800;
+  font-style:italic;
+  font-size:0.8rem;
+  line-height:1;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:0;
+  box-shadow:0 2px 0 rgba(0,0,0,0.3);
+  z-index:2;
+}
+.card-info-btn:hover{ background:var(--pd-blue-dark); }
 .card-front img{
   width:78px;
   height:78px;
@@ -830,4 +854,123 @@ html,body{
 @media (max-width:760px){
   .dc-header{ flex-direction:column; align-items:stretch; text-align:center; }
   .dc-scores{ justify-content:center; }
+}
+/* MODAL D'INFOS POKÉMON (bulle "i" sur les cartes) */
+.info-modal-box{
+  max-width:420px;
+  width:100%;
+  text-align:left;
+  position:relative;
+  padding-top:30px;
+}
+.info-modal-close{
+  position:absolute;
+  top:14px;
+  right:14px;
+  width:34px;
+  height:34px;
+  border-radius:50%;
+  background:#fff;
+  border:3px solid var(--pd-dark);
+  font-size:1.1rem;
+  line-height:1;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.info-modal-loading{
+  text-align:center;
+  padding:30px 10px;
+  font-weight:700;
+  color:#666;
+}
+.info-modal-header{
+  display:flex;
+  align-items:center;
+  gap:16px;
+  margin-bottom:16px;
+}
+.info-modal-sprite{
+  width:88px;
+  height:88px;
+  object-fit:contain;
+  background:#fff;
+  border:3px solid var(--pd-dark);
+  border-radius:12px;
+}
+.info-modal-num{
+  font-family:'Press Start 2P', cursive;
+  font-size:0.65rem;
+  color:var(--pd-red);
+}
+.info-modal-name{
+  margin:4px 0 6px;
+  font-size:1.3rem;
+  color:var(--pd-dark);
+}
+.info-modal-types{ display:flex; gap:6px; flex-wrap:wrap; }
+.type-badge{
+  display:inline-block;
+  padding:3px 12px;
+  border-radius:10px;
+  color:#fff;
+  font-weight:800;
+  font-size:0.78rem;
+  text-transform:uppercase;
+}
+.info-modal-genus{ font-size:0.82rem; color:#777; font-style:italic; margin-top:4px; }
+
+.info-modal-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin-bottom:10px;
+}
+.info-box{
+  background:#fff;
+  border:3px solid var(--pd-dark);
+  border-radius:12px;
+  padding:10px 14px;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+.info-box-wide{ grid-column:1 / -1; }
+.info-box-label{
+  font-size:0.72rem;
+  font-weight:800;
+  color:var(--pd-blue-dark);
+  text-transform:uppercase;
+  letter-spacing:0.3px;
+}
+.info-box-value{ font-weight:700; font-size:1rem; color:var(--pd-dark); }
+
+.gender-labels{ display:flex; gap:10px; font-weight:700; }
+.gender-bar{
+  display:flex;
+  height:10px;
+  border-radius:6px;
+  overflow:hidden;
+  margin-top:4px;
+  border:2px solid var(--pd-dark);
+}
+.gender-bar-male{ background:var(--pd-blue); }
+.gender-bar-female{ background:var(--pd-red); }
+.gender-none{ font-weight:700; color:#666; }
+
+.info-cry-audio{ width:100%; margin-top:4px; }
+
+.type-normal{background:#A8A77A;} .type-fighting{background:#C22E28;}
+.type-flying{background:#A98FF3;} .type-poison{background:#A33EA1;}
+.type-ground{background:#E2BF65;} .type-rock{background:#B6A136;}
+.type-bug{background:#A6B91A;} .type-ghost{background:#735797;}
+.type-steel{background:#B7B7CE;} .type-fire{background:#EE8130;}
+.type-water{background:#6390F0;} .type-grass{background:#7AC74C;}
+.type-electric{background:#F7D02C;color:#333;} .type-psychic{background:#F95587;}
+.type-ice{background:#96D9D6;color:#333;} .type-dragon{background:#6F35FC;}
+.type-dark{background:#705746;} .type-fairy{background:#D685AD;}
+
+@media (max-width:760px){
+  .info-modal-grid{ grid-template-columns:1fr; }
 }

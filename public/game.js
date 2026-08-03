@@ -508,8 +508,19 @@
     var pname = document.createElement("div");
     pname.className = "pname";
     pname.textContent = pokeData.name;
+    var infoBtn = document.createElement("button");
+    infoBtn.type = "button";
+    infoBtn.className = "card-info-btn";
+    infoBtn.setAttribute("aria-label", "Informations sur " + pokeData.name);
+    infoBtn.textContent = "i";
+    infoBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      openPokemonInfoModal(pokeData.id, pokeData.name);
+    });
+
     front.appendChild(img);
     front.appendChild(pname);
+    front.appendChild(infoBtn);
 
     var back = document.createElement("div");
     back.className = "card-face card-back";
@@ -520,6 +531,153 @@
 
     if (faceUpForced === false) card.classList.add("flipped");
     return card;
+  }
+
+  // ---------- Bulle d'info Pokédex (modal détaillée par Pokémon) ----------
+  var TYPE_FR = {
+    normal: "Normal", fighting: "Combat", flying: "Vol", poison: "Poison",
+    ground: "Sol", rock: "Roche", bug: "Insecte", ghost: "Spectre",
+    steel: "Acier", fire: "Feu", water: "Eau", grass: "Plante",
+    electric: "Électrik", psychic: "Psy", ice: "Glace", dragon: "Dragon",
+    dark: "Ténèbres", fairy: "Fée",
+  };
+  var COLOR_FR = {
+    black: "Noir", blue: "Bleu", brown: "Marron", gray: "Gris",
+    green: "Vert", pink: "Rose", purple: "Violet", red: "Rouge",
+    white: "Blanc", yellow: "Jaune",
+  };
+  var EGG_GROUP_FR = {
+    monster: "Monstre", "water1": "Eau 1", "water2": "Eau 2", "water3": "Eau 3",
+    bug: "Insecte", flying: "Vol", ground: "Sol", fairy: "Fée",
+    plant: "Végétal", humanshape: "Humanoïde", mineral: "Minéral",
+    indeterminate: "Indéterminé", dragon: "Dragon", "no-eggs": "Aucun (ne se reproduit pas)",
+    ditto: "Ditto",
+  };
+
+  var pokemonInfoCache = {};
+
+  function closeInfoModal() {
+    document.getElementById("modalRoot").innerHTML = "";
+  }
+
+  function openPokemonInfoModal(id, frName) {
+    var modalRoot = document.getElementById("modalRoot");
+    modalRoot.innerHTML =
+      '<div class="modal-overlay" id="infoModalOverlay">' +
+      '<div class="modal-box info-modal-box">' +
+      '<button type="button" class="info-modal-close" id="infoModalClose">&times;</button>' +
+      '<div class="info-modal-loading">Chargement...</div>' +
+      "</div></div>";
+    document.getElementById("infoModalOverlay").addEventListener("click", function (e) {
+      if (e.target.id === "infoModalOverlay") closeInfoModal();
+    });
+    document.getElementById("infoModalClose").addEventListener("click", closeInfoModal);
+
+    if (pokemonInfoCache[id]) {
+      renderInfoModal(pokemonInfoCache[id], frName);
+      return;
+    }
+
+    Promise.all([
+      fetch("https://pokeapi.co/api/v2/pokemon/" + id).then(function (r) {
+        return r.json();
+      }),
+      fetch("https://pokeapi.co/api/v2/pokemon-species/" + id).then(function (r) {
+        return r.json();
+      }),
+    ])
+      .then(function (results) {
+        var data = { pokemon: results[0], species: results[1] };
+        pokemonInfoCache[id] = data;
+        renderInfoModal(data, frName);
+      })
+      .catch(function () {
+        var box = document.querySelector(".info-modal-box");
+        if (box) {
+          var loading = box.querySelector(".info-modal-loading");
+          if (loading) loading.textContent = "Impossible de charger les informations pour le moment.";
+        }
+      });
+  }
+
+  function renderInfoModal(data, frName) {
+    var box = document.querySelector(".info-modal-box");
+    if (!box) return;
+    var pokemon = data.pokemon;
+    var species = data.species;
+
+    var genusEntry = (species.genera || []).find(function (g) {
+      return g.language && g.language.name === "fr";
+    });
+    var genus = genusEntry ? genusEntry.genus : "";
+
+    var typesHtml = pokemon.types
+      .map(function (t) {
+        var key = t.type.name;
+        return '<span class="type-badge type-' + key + '">' + (TYPE_FR[key] || key) + "</span>";
+      })
+      .join("");
+
+    var heightM = (pokemon.height / 10).toFixed(1).replace(".0", "") + " m";
+    var weightKg = (pokemon.weight / 10).toFixed(1).replace(".0", "") + " kg";
+    var colorName = COLOR_FR[species.color ? species.color.name : ""] || (species.color ? species.color.name : "-");
+    var captureRate = species.capture_rate;
+    var eggGroups = (species.egg_groups || [])
+      .map(function (g) {
+        return EGG_GROUP_FR[g.name] || g.name;
+      })
+      .join(", ") || "-";
+
+    var genderHtml;
+    if (species.gender_rate === -1) {
+      genderHtml = '<div class="gender-none">Asexué (sans genre)</div>';
+    } else {
+      var femalePct = (species.gender_rate / 8) * 100;
+      var malePct = 100 - femalePct;
+      genderHtml =
+        '<div class="gender-labels"><span>&#9794; ' +
+        malePct.toFixed(0) +
+        "% / </span><span>&#9792; " +
+        femalePct.toFixed(0) +
+        "%</span></div>" +
+        '<div class="gender-bar"><div class="gender-bar-male" style="width:' +
+        malePct +
+        '%"></div><div class="gender-bar-female" style="width:' +
+        femalePct +
+        '%"></div></div>';
+    }
+
+    var cryUrl =
+      pokemon.cries && (pokemon.cries.latest || pokemon.cries.legacy)
+        ? pokemon.cries.latest || pokemon.cries.legacy
+        : null;
+
+    var idPadded = "#" + String(pokemon.id).padStart(4, "0");
+
+    box.innerHTML =
+      '<button type="button" class="info-modal-close" id="infoModalClose">&times;</button>' +
+      '<div class="info-modal-header">' +
+      '<img class="info-modal-sprite" src="' + spriteUrl(pokemon.id) + '" alt="' + frName + '">' +
+      '<div><div class="info-modal-num">' + idPadded + "</div>" +
+      '<h3 class="info-modal-name">' + frName + "</h3>" +
+      '<div class="info-modal-types">' + typesHtml + "</div>" +
+      (genus ? '<div class="info-modal-genus">' + genus + "</div>" : "") +
+      "</div></div>" +
+      '<div class="info-modal-grid">' +
+      '<div class="info-box"><span class="info-box-label">Taille</span><span class="info-box-value">' + heightM + "</span></div>" +
+      '<div class="info-box"><span class="info-box-label">Poids</span><span class="info-box-value">' + weightKg + "</span></div>" +
+      "</div>" +
+      '<div class="info-modal-grid">' +
+      '<div class="info-box"><span class="info-box-label">Couleur</span><span class="info-box-value">' + colorName + "</span></div>" +
+      '<div class="info-box"><span class="info-box-label">Taux de capture</span><span class="info-box-value">' + captureRate + "</span></div>" +
+      "</div>" +
+      '<div class="info-box info-box-wide"><span class="info-box-label">Groupe(s) d\'œufs</span><span class="info-box-value">' + eggGroups + "</span></div>" +
+      '<div class="info-box info-box-wide"><span class="info-box-label">Répartition des genres</span>' + genderHtml + "</div>" +
+      (cryUrl
+        ? '<div class="info-box info-box-wide"><span class="info-box-label">Cri officiel</span><audio controls src="' + cryUrl + '" class="info-cry-audio"></audio></div>'
+        : "");
+
+    document.getElementById("infoModalClose").addEventListener("click", closeInfoModal);
   }
 
   function renderGameScreen() {
