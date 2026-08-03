@@ -391,31 +391,7 @@ html,body{
   height:var(--card-h);
   perspective:800px;
   cursor:pointer;
-  position:relative;
 }
-.info-btn{
-  position:absolute;
-  top:4px;
-  right:4px;
-  width:24px;
-  height:24px;
-  border-radius:50%;
-  background:rgba(59,76,202,0.92);
-  color:#fff;
-  border:2px solid var(--pd-dark);
-  font-family:'Press Start 2P', cursive;
-  font-size:0.62rem;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  cursor:pointer;
-  z-index:6;
-  line-height:1;
-  padding:0;
-  box-shadow:0 2px 0 rgba(0,0,0,0.3);
-}
-.info-btn:hover{ background:var(--pd-blue-dark); }
-.info-btn:active{ transform:translateY(1px); box-shadow:0 1px 0 rgba(0,0,0,0.3); }
 .card-inner{
   position:relative;
   width:100%;
@@ -586,140 +562,6 @@ html,body{
   margin-top:22px;
   opacity:0.85;
 }
-/* MINI POKÉDEX */
-.pokedex-box{
-  max-width:520px;
-  width:100%;
-  text-align:left;
-  position:relative;
-  padding-top:34px;
-}
-.pokedex-close-btn{
-  position:absolute;
-  top:10px;
-  right:14px;
-  width:30px;
-  height:30px;
-  border-radius:50%;
-  border:3px solid var(--pd-dark);
-  background:#fff;
-  font-size:1.1rem;
-  font-weight:800;
-  line-height:1;
-  cursor:pointer;
-  color:var(--pd-dark);
-}
-.pokedex-close-btn:hover{ background:var(--pd-yellow); }
-.pokedex-loading{
-  text-align:center;
-  padding:34px 10px;
-  font-weight:700;
-  color:var(--pd-blue-dark);
-}
-.pokedex-header{
-  display:flex;
-  align-items:flex-start;
-  gap:16px;
-  flex-wrap:wrap;
-}
-.pokedex-header img{
-  width:110px;
-  height:110px;
-  object-fit:contain;
-  background:radial-gradient(circle, #fff 60%, #eee 100%);
-  border:3px solid var(--pd-dark);
-  border-radius:12px;
-  flex-shrink:0;
-}
-.pokedex-number{
-  font-family:'Press Start 2P', cursive;
-  font-size:0.7rem;
-  color:var(--pd-red);
-  margin-bottom:4px;
-}
-.pokedex-name{
-  font-size:1.3rem;
-  font-weight:800;
-  color:var(--pd-dark);
-  line-height:1.15;
-}
-.pokedex-types{
-  display:flex;
-  gap:6px;
-  flex-wrap:wrap;
-  margin-top:8px;
-}
-.type-badge{
-  padding:3px 12px;
-  border-radius:10px;
-  color:#fff;
-  font-size:0.72rem;
-  font-weight:800;
-  border:2px solid rgba(0,0,0,0.3);
-  text-transform:uppercase;
-  letter-spacing:0.5px;
-}
-.pokedex-category{
-  font-style:italic;
-  color:#666;
-  font-size:0.85rem;
-  margin-top:8px;
-}
-.pokedex-stats{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:10px 14px;
-  margin-top:18px;
-}
-.pokedex-stat{
-  background:#fff;
-  border:2px solid var(--pd-dark);
-  border-radius:10px;
-  padding:8px 12px;
-}
-.pokedex-stat.wide{ grid-column:1 / -1; }
-.pokedex-stat .stat-label{
-  font-size:0.66rem;
-  color:var(--pd-blue-dark);
-  font-weight:800;
-  display:block;
-  text-transform:uppercase;
-  letter-spacing:0.4px;
-  margin-bottom:3px;
-}
-.pokedex-stat .stat-value{
-  font-size:0.95rem;
-  font-weight:700;
-  color:var(--pd-dark);
-}
-.gender-bar{
-  display:flex;
-  height:12px;
-  border-radius:8px;
-  overflow:hidden;
-  border:2px solid var(--pd-dark);
-  margin-top:5px;
-}
-.gender-bar .male-part{ background:var(--pd-blue); }
-.gender-bar .female-part{ background:var(--pd-red); }
-.pokedex-cry{
-  margin-top:18px;
-  text-align:center;
-  background:#fff;
-  border:2px solid var(--pd-dark);
-  border-radius:12px;
-  padding:10px 14px;
-}
-.pokedex-cry .cry-label{
-  display:block;
-  font-size:0.7rem;
-  font-weight:800;
-  color:var(--pd-blue-dark);
-  margin-bottom:6px;
-  text-transform:uppercase;
-}
-.pokedex-cry audio{ width:100%; }
-
 .connection-banner{
   text-align:center;
   background:var(--pd-red);
@@ -736,4 +578,256 @@ html,body{
   .grid{ grid-template-columns:repeat(6, var(--card-w)); gap:8px; }
   .card-front img{ width:54px; height:54px; }
   .card-front .pname{ font-size:0.6rem; }
+}
+
+/* ============================================================ */
+/* ================= MODE DEMI-CERCLE ========================= */
+/* ============================================================ */
+
+/* Sélecteur de mode (écran Créer) */
+.mode-choices{
+  display:flex;
+  gap:16px;
+  justify-content:center;
+  flex-wrap:wrap;
+  margin:18px 0 8px;
+}
+.mode-card{
+  background:#fff;
+  border:4px solid var(--pd-dark);
+  border-radius:16px;
+  padding:16px 18px;
+  width:210px;
+  cursor:pointer;
+  transition:transform 0.1s ease, box-shadow 0.1s ease;
+}
+.mode-card:hover{ transform:translateY(-3px); }
+.mode-card.checked{
+  border-color:var(--pd-yellow);
+  box-shadow:0 0 0 3px var(--pd-yellow) inset;
+  background:#fffbe8;
+}
+.mode-card .emoji{ font-size:1.8rem; }
+.mode-card h3{ margin:6px 0 4px; color:var(--pd-blue-dark); font-size:1rem; }
+.mode-card p{ font-size:0.8rem; color:#666; margin:0; }
+
+.dc-hint{
+  max-width:520px;
+  margin-left:auto;
+  margin-right:auto;
+  margin-bottom:14px;
+}
+
+/* En-tête de round */
+.dc-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  flex-wrap:wrap;
+  background:var(--pd-blue);
+  border:5px solid var(--pd-dark);
+  border-radius:18px;
+  padding:12px 18px;
+  margin-bottom:18px;
+}
+.dc-round-badge{
+  color:#fff;
+  font-size:0.75rem;
+  background:var(--pd-red);
+  border:3px solid var(--pd-dark);
+  border-radius:10px;
+  padding:8px 12px;
+}
+.dc-scores{
+  display:flex;
+  gap:10px;
+}
+.dc-score-box{
+  background:#fff;
+  border:3px solid var(--pd-dark);
+  border-radius:12px;
+  padding:6px 14px;
+  text-align:center;
+  min-width:90px;
+}
+.dc-score-name{
+  display:block;
+  font-size:0.7rem;
+  color:#666;
+  font-weight:700;
+}
+.dc-score-val{
+  display:block;
+  font-size:1.3rem;
+  font-weight:800;
+  color:var(--pd-red-dark);
+}
+.dc-role-badge{
+  color:#fff;
+  font-weight:800;
+  font-size:0.95rem;
+  padding:8px 14px;
+  border-radius:12px;
+  border:3px solid var(--pd-dark);
+  text-shadow:1px 1px 0 rgba(0,0,0,0.3);
+}
+.dc-role-master{ background:var(--pd-red); }
+.dc-role-guesser{ background:#27AE60; }
+
+/* Panneau Pokémon */
+.dc-pokemon-panel{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:14px;
+  background:#fff;
+  border:4px solid var(--pd-dark);
+  border-radius:16px;
+  padding:12px 18px;
+  margin:0 auto 16px;
+  max-width:320px;
+}
+.dc-pokemon-panel img{
+  width:70px;
+  height:70px;
+  object-fit:contain;
+}
+.dc-pokemon-panel #dcPokemonName{
+  font-weight:800;
+  font-size:1.15rem;
+  color:var(--pd-dark);
+}
+.dc-pokemon-hidden-msg{
+  text-align:center;
+  font-weight:700;
+  color:#555;
+  background:#fff;
+  border:3px dashed var(--pd-dark);
+  border-radius:14px;
+  padding:14px 18px;
+  margin:0 auto 16px;
+  max-width:420px;
+}
+
+/* Jauge en demi-cercle */
+.dc-gauge-wrap{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  margin:0 auto 18px;
+  max-width:420px;
+}
+#dcSvg{
+  width:100%;
+  max-width:400px;
+  touch-action:none;
+  cursor:grab;
+}
+.dc-gauge-captions{
+  display:flex;
+  justify-content:space-between;
+  width:100%;
+  max-width:340px;
+  font-size:0.8rem;
+  font-weight:700;
+  color:#fff;
+  text-shadow:1px 1px 0 var(--pd-dark);
+  margin-top:-6px;
+  padding:0 6px;
+}
+.dc-track{
+  fill:none;
+  stroke:#c9d6e8;
+  stroke-width:26;
+  stroke-linecap:round;
+}
+.dc-zone{
+  fill:none;
+  stroke-linecap:round;
+}
+.dc-zone-2{ stroke:#5aa9ff; stroke-width:26; }
+.dc-zone-3{ stroke:#4fd17a; stroke-width:18; }
+.dc-zone-4{ stroke:var(--pd-yellow); stroke-width:10; }
+.dc-label{
+  font-family:'Baloo 2', cursive;
+  font-size:20px;
+}
+.dc-needle{
+  stroke-width:4;
+  stroke-linecap:round;
+}
+.dc-needle-mine{ stroke:var(--pd-blue-dark); }
+.dc-needle-other{ stroke:var(--pd-red-dark); }
+.dc-dot{
+  stroke:var(--pd-dark);
+  stroke-width:4;
+  cursor:grab;
+}
+.dc-dot-mine{ fill:var(--pd-blue); }
+.dc-dot-other{ fill:var(--pd-red); }
+.dc-dot-locked{ cursor:default; opacity:0.85; }
+.dc-dot-master-reveal{ fill:var(--pd-red); }
+.dc-dot-guesser-reveal{ fill:var(--pd-blue); }
+
+/* Panneau de révélation */
+.dc-reveal-panel{
+  text-align:center;
+  background:#fff;
+  border:4px solid var(--pd-dark);
+  border-radius:16px;
+  padding:14px 20px;
+  margin:0 auto 16px;
+  max-width:420px;
+}
+.dc-reveal-points{
+  font-family:'Press Start 2P', cursive;
+  font-size:1.3rem;
+  color:var(--pd-red);
+  margin-bottom:6px;
+}
+.dc-reveal-detail{
+  font-size:0.95rem;
+  color:#444;
+}
+
+.dc-controls{
+  display:flex;
+  justify-content:center;
+  gap:18px;
+  margin-top:6px;
+  flex-wrap:wrap;
+}
+
+/* Fin de partie Demi-Cercle */
+.dc-final-scores{
+  display:flex;
+  gap:16px;
+  justify-content:center;
+  flex-wrap:wrap;
+  margin:16px 0 20px;
+}
+.dc-final-score-box{
+  background:#fff;
+  border:4px solid var(--pd-dark);
+  border-radius:14px;
+  padding:14px 24px;
+  text-align:center;
+  min-width:140px;
+}
+.dc-final-score-box span{
+  display:block;
+  font-size:0.85rem;
+  color:#666;
+  font-weight:700;
+  margin-bottom:6px;
+}
+.dc-final-score-box strong{
+  font-size:1.8rem;
+  color:var(--pd-red-dark);
+}
+
+@media (max-width:760px){
+  .dc-header{ flex-direction:column; align-items:stretch; text-align:center; }
+  .dc-scores{ justify-content:center; }
 }

@@ -23,12 +23,12 @@
   <div id="screen-home" class="screen">
     <div class="home-inner">
       <h2 class="pixel">Bienvenue dresseurs !</h2>
-      <p>Chaque joueur choisit en secret un Pokémon que l'autre devra deviner en posant des questions à voix haute. Jouez à distance grâce à un lobby !</p>
+      <p>Choisis un mode de jeu et affronte un ami en ligne grâce à un lobby !</p>
       <div class="home-choices">
         <div class="choice-card" id="btnGoCreate">
           <div class="emoji">🎮</div>
           <h3>Créer un lobby</h3>
-          <p>Deviens l'hôte, choisis les générations de Pokémon et invite ton ami avec un code.</p>
+          <p>Deviens l'hôte, choisis le mode de jeu, les générations de Pokémon et invite ton ami avec un code.</p>
         </div>
         <div class="choice-card" id="btnGoJoin">
           <div class="emoji">🔑</div>
@@ -43,7 +43,21 @@
   <div id="screen-create" class="screen hidden">
     <div class="lobby-inner">
       <h2 class="pixel">Créer un lobby</h2>
-      <p>Entre ton nom pour créer une partie.</p>
+      <p>Choisis un mode de jeu, puis entre ton nom.</p>
+
+      <div class="mode-choices" id="modeChoices">
+        <div class="mode-card checked" data-mode="quiestce" id="modeCardQuiestce">
+          <div class="emoji">🕵️</div>
+          <h3>Qui est-ce ?</h3>
+          <p>Grille de 48 Pokémon, devine le secret de l'adversaire.</p>
+        </div>
+        <div class="mode-card" data-mode="demicercle" id="modeCardDemicercle">
+          <div class="emoji">🌗</div>
+          <h3>Demi-Cercle</h3>
+          <p>10 rounds : place le curseur, devine l'avis secret du Maître du round.</p>
+        </div>
+      </div>
+
       <div class="name-fields">
         <div class="name-field">
           <label for="createName">Ton nom</label>
@@ -90,7 +104,7 @@
 
       <div id="hostGenPicker" class="gen-picker hidden">
         <h3 class="pixel" style="font-size:0.85rem;">Choisis les générations</h3>
-        <p class="gen-hint">Sélectionne une ou plusieurs générations de Pokémon qui apparaîtront sur la grille.</p>
+        <p class="gen-hint">Sélectionne une ou plusieurs générations de Pokémon qui apparaîtront en jeu.</p>
         <div class="gen-grid" id="genGrid"></div>
       </div>
 
@@ -99,6 +113,8 @@
         <p class="gen-hint">Choisis la taille de la grille de jeu.</p>
         <div class="grid-mode-options" id="gridModeOptions"></div>
       </div>
+
+      <p id="dcModeHintHost" class="gen-hint dc-hint hidden">Mode Demi-Cercle : 10 Pokémon aléatoires seront tirés (un par round) parmi les générations choisies.</p>
 
       <div id="guestGenInfo" class="gen-readonly hidden"></div>
 
@@ -109,7 +125,7 @@
     </div>
   </div>
 
-  <!-- CHOIX DU SECRET -->
+  <!-- CHOIX DU SECRET (mode Qui est-ce ?) -->
   <div id="screen-pick" class="screen hidden">
     <div class="pick-top">
       <h2 class="pixel" style="font-size:1rem;">Choisis ton Pokémon secret</h2>
@@ -120,7 +136,7 @@
     <p class="pick-wait-msg hidden" id="pickWaitMsg">En attente du choix de ton adversaire...</p>
   </div>
 
-  <!-- PARTIE -->
+  <!-- PARTIE (mode Qui est-ce ?) -->
   <div id="screen-game" class="screen hidden">
     <div class="game-header">
       <div class="secret-panel">
@@ -148,7 +164,7 @@
     </div>
   </div>
 
-  <!-- VICTOIRE -->
+  <!-- VICTOIRE (mode Qui est-ce ?) -->
   <div id="screen-victory" class="screen hidden">
     <div class="trophy">🏆</div>
     <h2 class="pixel" id="victoryTitle">VICTOIRE !</h2>
@@ -164,6 +180,71 @@
       <button class="btn btn-green" id="btnReplay">Rejouer (modifier les paramètres)</button>
     </div>
     <div class="replay-status" id="replayStatus">En attente des deux joueurs...</div>
+  </div>
+
+  <!-- DEMI-CERCLE : ROUND -->
+  <div id="screen-demicercle" class="screen hidden">
+    <div class="dc-header">
+      <div class="dc-round-badge pixel">ROUND <span id="dcRoundNum">1</span>/<span id="dcTotalRounds">10</span></div>
+      <div class="dc-scores">
+        <div class="dc-score-box">
+          <span class="dc-score-name" id="dcScoreP1Name">Joueur 1</span>
+          <span class="dc-score-val" id="dcScoreP1">0</span>
+        </div>
+        <div class="dc-score-box">
+          <span class="dc-score-name" id="dcScoreP2Name">Joueur 2</span>
+          <span class="dc-score-val" id="dcScoreP2">0</span>
+        </div>
+      </div>
+      <div class="dc-role-badge" id="dcRoleBadge">Tu es le Maître du round</div>
+    </div>
+
+    <div class="dc-pokemon-panel hidden" id="dcPokemonPanel">
+      <img id="dcPokemonImg" src="" alt="">
+      <div id="dcPokemonName">-</div>
+    </div>
+    <div class="dc-pokemon-hidden-msg" id="dcPokemonHiddenMsg">En attente...</div>
+
+    <div class="dc-gauge-wrap">
+      <svg id="dcSvg" viewBox="0 0 320 190" xmlns="http://www.w3.org/2000/svg">
+        <path id="dcTrack" class="dc-track"></path>
+        <g id="dcZones"></g>
+        <line id="dcOtherNeedle" class="dc-needle dc-needle-other hidden"></line>
+        <circle id="dcOtherDot" class="dc-dot dc-dot-other hidden" r="11"></circle>
+        <line id="dcMyNeedle" class="dc-needle dc-needle-mine hidden"></line>
+        <circle id="dcMyDot" class="dc-dot dc-dot-mine hidden" r="11"></circle>
+        <text x="14" y="182" class="dc-label">👍</text>
+        <text x="306" y="182" class="dc-label" text-anchor="end">👎</text>
+      </svg>
+      <div class="dc-gauge-captions">
+        <span>J'aime énormément</span>
+        <span>Je déteste</span>
+      </div>
+    </div>
+
+    <div class="dc-reveal-panel hidden" id="dcRevealPanel">
+      <div class="dc-reveal-points" id="dcRevealPoints">+0 point</div>
+      <div class="dc-reveal-detail" id="dcRevealDetail"></div>
+    </div>
+
+    <div class="dc-controls">
+      <button class="btn btn-green btn-lg hidden" id="btnDcValidateMaster">Valider ma position</button>
+      <button class="btn btn-green btn-lg hidden" id="btnDcValidateGuesser">Valider ma réponse</button>
+      <button class="btn btn-blue btn-lg hidden" id="btnDcContinue">Continuer</button>
+    </div>
+    <p class="pick-wait-msg hidden" id="dcWaitMsg">En attente de l'autre joueur...</p>
+  </div>
+
+  <!-- DEMI-CERCLE : FIN DE PARTIE -->
+  <div id="screen-demicercle-victory" class="screen hidden">
+    <div class="trophy">🏆</div>
+    <h2 class="pixel" id="dcVictoryTitle">FIN DE LA PARTIE</h2>
+    <p id="dcVictoryText">-</p>
+    <div class="dc-final-scores" id="dcFinalScores"></div>
+    <div class="replay-row">
+      <button class="btn btn-green" id="btnDcReplay">Rejouer (modifier les paramètres)</button>
+    </div>
+    <div class="replay-status" id="dcReplayStatus">En attente des deux joueurs...</div>
   </div>
 
   <div class="footer-note">Sprites officiels via PokeAPI · Jeu multijoueur en ligne, invite un ami avec un code de lobby.</div>

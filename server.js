@@ -11,6 +11,23 @@ const GRID_SIZE = 48;
 const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sans caractères ambigus (0,O,1,I)
 const ROOM_TTL_MS = 1000 * 60 * 60 * 4; // 4h d'inactivité -> nettoyage
 const GRID_MODES = ["normal", "mega"];
+const GAME_MODES = ["quiestce", "demicercle"];
+const DEMI_CERCLE_ROUNDS = 10;
+
+// Zones de score du mode Demi-Cercle : distance max (sur une échelle 0-100)
+// pour obtenir 4, 3 ou 2 points ; au-delà -> 0 point.
+const DEMI_CERCLE_ZONES = [
+  { max: 4, points: 4 },
+  { max: 10, points: 3 },
+  { max: 18, points: 2 },
+];
+
+function computeDemiCercleScore(diff) {
+  for (let i = 0; i < DEMI_CERCLE_ZONES.length; i++) {
+    if (diff <= DEMI_CERCLE_ZONES[i].max) return DEMI_CERCLE_ZONES[i].points;
+  }
+  return 0;
+}
 
 // ---------- Chargement des données Pokémon par génération ----------
 const POKEMON_BY_GEN = JSON.parse(
@@ -76,10 +93,14 @@ function randomStartingPlayer() {
 // ---------- État des rooms en mémoire ----------
 // rooms: Map<code, room>
 // room = {
-//   code, generations:[1], gridMode:'normal'|'mega', status:'lobby'|'picking'|'playing'|'victory',
+//   code, mode:'quiestce'|'demicercle', generations:[1], gridMode:'normal'|'mega', status:'lobby'|'picking'|'playing'|'victory'|'demicercle'|'demicercle_over',
 //   players: { 1:{socketId,name,connected,secret,replayReady}, 2:{...} },
 //   gamePokemons: [{id,name}], currentPlayer:1, guessMode:false,
-//   winner:null, secretFound:null, lastActivity: Date.now()
+//   winner:null, secretFound:null,
+//   demiCercle: { round, totalRounds, guesser, master, pokemon, masterPosition, guesserPosition,
+//                 phase:'master_placing'|'guessing'|'revealed', scores:{1,2}, continueReady:{1,2},
+//                 usedIds:[], lastRoundScore } | null,
+//   lastActivity: Date.now()
 // }
 const rooms = new Map();
 const socketToRoom = new Map(); // socketId -> {code, playerNum}
@@ -96,6 +117,7 @@ function publicPlayers(room) {
 function roomSummary(room) {
   return {
     code: room.code,
+    mode: room.mode,
     status: room.status,
     generations: room.generations,
     gridMode: room.gridMode,
@@ -137,11 +159,61 @@ app.get("/api/generations", (req, res) => {
   res.json(meta);
 });
 
+// ---------- Fonctions Mode Demi-Cercle ----------
+function startDemiCercleRound(room) {
+  const dc = room.demiCercle;
+  dc.round += 1;
+  dc.guesser = dc.round % 2 === 1 ? 1 : 2;
+  dc.master = otherPlayerNum(dc.guesser);
+
+  const pool = buildPool(room.generations).filter((p) => dc.usedIds.indexOf(p.id) === -1);
+  const shuffled = shuffle(pool.length ? pool : buildPool(room.generations));
+  const poke = shuffled[0];
+  dc.usedIds.push(poke.id);
+  dc.pokemon = poke;
+  dc.masterPosition = null;
+  dc.guesserPosition = 50;
+  dc.phase = "master_placing";
+  dc.continueReady = { 1: false, 2: false };
+  dc.lastRoundScore = null;
+}
+
+// Construit le payload adapté au rôle du joueur (masque ce qui doit rester secret)
+function demiCerclePayloadFor(room, playerNum) {
+  const dc = room.demiCercle;
+  const role = dc.master === playerNum ? "master" : "guesser";
+  const showPokemon = role === "master" || dc.phase === "guessing" || dc.phase === "revealed";
+  const showMasterPosition = role === "master" || dc.phase === "revealed";
+  return {
+    round: dc.round,
+    totalRounds: dc.totalRounds,
+    master: dc.master,
+    guesser: dc.guesser,
+    role: role,
+    phase: dc.phase,
+    scores: dc.scores,
+    pokemon: showPokemon ? dc.pokemon : null,
+    masterPosition: showMasterPosition ? dc.masterPosition : null,
+    guesserPosition: dc.guesserPosition,
+    lastRoundScore: dc.lastRoundScore,
+  };
+}
+
+function emitDemiCercleRoundToRoom(room) {
+  [1, 2].forEach((n) => {
+    const p = room.players[n];
+    if (p && p.socketId) {
+      io.to(p.socketId).emit("demicercle_round_start", demiCerclePayloadFor(room, n));
+    }
+  });
+}
+
 io.on("connection", (socket) => {
-  socket.on("create_room", ({ name }) => {
+  socket.on("create_room", ({ name, mode }) => {
     const code = makeRoomCode();
     const room = {
       code,
+      mode: GAME_MODES.indexOf(mode) !== -1 ? mode : "quiestce",
       generations: [1],
       gridMode: "normal",
       status: "lobby",
@@ -154,6 +226,7 @@ io.on("connection", (socket) => {
       guessMode: false,
       winner: null,
       secretFound: null,
+      demiCercle: null,
       lastActivity: Date.now(),
     };
     rooms.set(code, room);
@@ -196,7 +269,8 @@ io.on("connection", (socket) => {
     io.to(code).emit("players_update", roomSummary(room));
 
     // Si une partie était déjà en cours et qu'un joueur revient, on le remet à niveau
-    if (room.status === "picking" || room.status === "playing" || room.status === "victory") {
+    if (room.status === "picking" || room.status === "playing" || room.status === "victory" ||
+        room.status === "demicercle" || room.status === "demicercle_over") {
       socket.emit("resync", buildResyncPayload(room, playerNum));
     }
   });
@@ -232,6 +306,40 @@ io.on("connection", (socket) => {
       socket.emit("error_message", { message: "Il faut deux joueurs pour commencer." });
       return;
     }
+
+    // ---- Branche Mode Demi-Cercle ----
+    if (room.mode === "demicercle") {
+      const pool = buildPool(room.generations);
+      if (pool.length < DEMI_CERCLE_ROUNDS) {
+        socket.emit("error_message", {
+          message: "Sélectionne plus de générations (au moins " + DEMI_CERCLE_ROUNDS + " Pokémon nécessaires).",
+        });
+        return;
+      }
+      room.status = "demicercle";
+      room.players[1].replayReady = false;
+      room.players[2].replayReady = false;
+      room.demiCercle = {
+        round: 0,
+        totalRounds: DEMI_CERCLE_ROUNDS,
+        guesser: null,
+        master: null,
+        pokemon: null,
+        masterPosition: null,
+        guesserPosition: 50,
+        phase: null,
+        scores: { 1: 0, 2: 0 },
+        continueReady: { 1: false, 2: false },
+        usedIds: [],
+        lastRoundScore: null,
+      };
+      startDemiCercleRound(room);
+      touch(room);
+      emitDemiCercleRoundToRoom(room);
+      return;
+    }
+
+    // ---- Branche Mode Qui est-ce ? (existant) ----
     const grid = pickGrid(room.generations, room.gridMode);
     if (grid.length < 4) {
       socket.emit("error_message", { message: "Pas assez de Pokémon dans les générations choisies." });
@@ -329,6 +437,89 @@ io.on("connection", (socket) => {
     }
   });
 
+  // ---------- Mode Demi-Cercle : le Maître fixe sa position secrète ----------
+  socket.on("demicercle_master_submit", ({ code, position }) => {
+    const room = rooms.get(code);
+    const info = socketToRoom.get(socket.id);
+    if (!room || !info || room.status !== "demicercle") return;
+    const dc = room.demiCercle;
+    if (!dc || dc.phase !== "master_placing" || dc.master !== info.playerNum) return;
+    const pos = Number(position);
+    if (isNaN(pos)) return;
+    dc.masterPosition = Math.max(0, Math.min(100, pos));
+    dc.phase = "guessing";
+    dc.guesserPosition = 50;
+    touch(room);
+    emitDemiCercleRoundToRoom(room);
+  });
+
+  // ---------- Mode Demi-Cercle : le Devineur déplace sa barre en direct ----------
+  socket.on("demicercle_guesser_move", ({ code, position }) => {
+    const room = rooms.get(code);
+    const info = socketToRoom.get(socket.id);
+    if (!room || !info || room.status !== "demicercle") return;
+    const dc = room.demiCercle;
+    if (!dc || dc.phase !== "guessing" || dc.guesser !== info.playerNum) return;
+    const pos = Number(position);
+    if (isNaN(pos)) return;
+    dc.guesserPosition = Math.max(0, Math.min(100, pos));
+    touch(room);
+    const masterEntry = room.players[dc.master];
+    if (masterEntry && masterEntry.socketId) {
+      io.to(masterEntry.socketId).emit("demicercle_guesser_move_update", { position: dc.guesserPosition });
+    }
+  });
+
+  // ---------- Mode Demi-Cercle : le Devineur valide sa réponse finale ----------
+  socket.on("demicercle_guesser_submit", ({ code, position }) => {
+    const room = rooms.get(code);
+    const info = socketToRoom.get(socket.id);
+    if (!room || !info || room.status !== "demicercle") return;
+    const dc = room.demiCercle;
+    if (!dc || dc.phase !== "guessing" || dc.guesser !== info.playerNum) return;
+    const pos = Number(position);
+    if (isNaN(pos)) return;
+    dc.guesserPosition = Math.max(0, Math.min(100, pos));
+    const diff = Math.abs(dc.masterPosition - dc.guesserPosition);
+    const points = computeDemiCercleScore(diff);
+    dc.scores[dc.guesser] += points;
+    dc.lastRoundScore = points;
+    dc.phase = "revealed";
+    dc.continueReady = { 1: false, 2: false };
+    touch(room);
+    emitDemiCercleRoundToRoom(room);
+  });
+
+  // ---------- Mode Demi-Cercle : passage au round suivant ----------
+  socket.on("demicercle_continue", ({ code }) => {
+    const room = rooms.get(code);
+    const info = socketToRoom.get(socket.id);
+    if (!room || !info || room.status !== "demicercle") return;
+    const dc = room.demiCercle;
+    if (!dc || dc.phase !== "revealed") return;
+    dc.continueReady[info.playerNum] = true;
+    touch(room);
+
+    if (dc.continueReady[1] && dc.continueReady[2]) {
+      if (dc.round >= dc.totalRounds) {
+        room.status = "demicercle_over";
+        let winner = null;
+        if (dc.scores[1] > dc.scores[2]) winner = 1;
+        else if (dc.scores[2] > dc.scores[1]) winner = 2;
+        io.to(code).emit("demicercle_game_over", {
+          scores: dc.scores,
+          winner: winner,
+          winnerName: winner ? room.players[winner].name : null,
+        });
+      } else {
+        startDemiCercleRound(room);
+        emitDemiCercleRoundToRoom(room);
+      }
+    } else {
+      io.to(code).emit("demicercle_continue_status", { continueReady: dc.continueReady });
+    }
+  });
+
   // Vote de revanche : une fois les deux joueurs prêts, on ne relance pas
   // directement la partie. On renvoie tout le monde en salle d'attente pour
   // permettre à l'hôte de modifier générations / mode de grille avant de
@@ -336,7 +527,8 @@ io.on("connection", (socket) => {
   socket.on("replay_vote", ({ code }) => {
     const room = rooms.get(code);
     const info = socketToRoom.get(socket.id);
-    if (!room || !info || room.status !== "victory") return;
+    if (!room || !info) return;
+    if (room.status !== "victory" && room.status !== "demicercle_over") return;
     room.players[info.playerNum].replayReady = true;
     touch(room);
     io.to(code).emit("players_update", roomSummary(room));
@@ -349,6 +541,7 @@ io.on("connection", (socket) => {
       room.players[2].secret = null;
       room.players[1].replayReady = false;
       room.players[2].replayReady = false;
+      room.demiCercle = null;
       room.status = "lobby";
       room.currentPlayer = 1;
       room.guessMode = false;
@@ -403,8 +596,9 @@ function buildGameStatePayload(room) {
 
 function buildResyncPayload(room, forPlayerNum) {
   const me = room.players[forPlayerNum];
-  return {
+  const payload = {
     status: room.status,
+    mode: room.mode,
     generations: room.generations,
     gridMode: room.gridMode,
     gamePokemons: room.gamePokemons,
@@ -414,7 +608,12 @@ function buildResyncPayload(room, forPlayerNum) {
     mySecret: me ? me.secret : null,
     winner: room.winner,
     secretFound: room.secretFound,
+    demiCercle: null,
   };
+  if (room.mode === "demicercle" && room.demiCercle) {
+    payload.demiCercle = demiCerclePayloadFor(room, forPlayerNum);
+  }
+  return payload;
 }
 
 server.listen(PORT, () => {

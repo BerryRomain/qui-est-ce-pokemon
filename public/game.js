@@ -12,6 +12,8 @@
     pick: document.getElementById("screen-pick"),
     game: document.getElementById("screen-game"),
     victory: document.getElementById("screen-victory"),
+    demicercle: document.getElementById("screen-demicercle"),
+    demicercleVictory: document.getElementById("screen-demicercle-victory"),
   };
   var modalRoot = document.getElementById("modalRoot");
   var connectionBanner = document.getElementById("connectionBanner");
@@ -31,211 +33,6 @@
     );
   }
 
-  function criesUrl(id) {
-    return (
-      "https://raw.githubusercontent.com/PokeAPI/cries/main/cries/pokemon/latest/" +
-      id +
-      ".ogg"
-    );
-  }
-
-  // ---------- Mini Pokédex : traductions & couleurs ----------
-  var TYPE_FR = {
-    normal: "Normal", fire: "Feu", water: "Eau", electric: "Électrik",
-    grass: "Plante", ice: "Glace", fighting: "Combat", poison: "Poison",
-    ground: "Sol", flying: "Vol", psychic: "Psy", bug: "Insecte",
-    rock: "Roche", ghost: "Spectre", dragon: "Dragon", dark: "Ténèbres",
-    steel: "Acier", fairy: "Fée",
-  };
-  var TYPE_COLORS = {
-    normal: "#A8A878", fire: "#F08030", water: "#6890F0", electric: "#F8D030",
-    grass: "#78C850", ice: "#98D8D8", fighting: "#C03028", poison: "#A040A0",
-    ground: "#E0C068", flying: "#A890F0", psychic: "#F85888", bug: "#A8B820",
-    rock: "#B8A038", ghost: "#705898", dragon: "#7038F8", dark: "#705848",
-    steel: "#B8B8D0", fairy: "#EE99AC",
-  };
-  var EGG_GROUP_FR = {
-    monster: "Monstrueux",
-    "water1": "Groupe Aquatique 1",
-    "water2": "Groupe Aquatique 2",
-    "water3": "Groupe Aquatique 3",
-    bug: "Insectoïde",
-    flying: "Aérien",
-    ground: "Terrestre",
-    field: "Terrestre",
-    fairy: "Féerique",
-    plant: "Végétal",
-    grass: "Végétal",
-    humanlike: "Humanoïde",
-    "human-like": "Humanoïde",
-    mineral: "Minéral",
-    indeterminate: "Amorphe",
-    amorphous: "Amorphe",
-    ditto: "Métamorph",
-    dragon: "Draconique",
-    "no-eggs": "Aucun (indéterminé)",
-    undiscovered: "Aucun (indéterminé)",
-  };
-  var COLOR_FR = {
-    black: "Noir", blue: "Bleu", brown: "Marron", gray: "Gris", grey: "Gris",
-    green: "Vert", pink: "Rose", purple: "Violet", red: "Rouge",
-    white: "Blanc", yellow: "Jaune",
-  };
-
-  var pokedexCache = {};
-
-  function fetchPokedexData(id) {
-    if (pokedexCache[id]) return Promise.resolve(pokedexCache[id]);
-    var pokeUrl = "https://pokeapi.co/api/v2/pokemon/" + id + "/";
-    var speciesUrl = "https://pokeapi.co/api/v2/pokemon-species/" + id + "/";
-    return Promise.all([
-      fetch(pokeUrl).then(function (r) {
-        if (!r.ok) throw new Error("pokemon fetch failed");
-        return r.json();
-      }),
-      fetch(speciesUrl).then(function (r) {
-        if (!r.ok) throw new Error("species fetch failed");
-        return r.json();
-      }),
-    ]).then(function (results) {
-      var p = results[0],
-        s = results[1];
-      var genus = "";
-      (s.genera || []).forEach(function (g) {
-        if (g.language && g.language.name === "fr") genus = g.genus;
-      });
-      var eggGroups = (s.egg_groups || []).map(function (eg) {
-        return EGG_GROUP_FR[eg.name] || eg.name;
-      });
-      var colorName = s.color ? COLOR_FR[s.color.name] || s.color.name : "-";
-      var types = (p.types || [])
-        .slice()
-        .sort(function (a, b) {
-          return a.slot - b.slot;
-        })
-        .map(function (t) {
-          return t.type.name;
-        });
-      var data = {
-        id: id,
-        height: typeof p.height === "number" ? p.height / 10 : null,
-        weight: typeof p.weight === "number" ? p.weight / 10 : null,
-        types: types,
-        genus: genus,
-        eggGroups: eggGroups,
-        color: colorName,
-        captureRate: typeof s.capture_rate === "number" ? s.capture_rate : null,
-        genderRate: typeof s.gender_rate === "number" ? s.gender_rate : null,
-      };
-      pokedexCache[id] = data;
-      return data;
-    });
-  }
-
-  function genderStatHtml(genderRate) {
-    if (genderRate === null) return "Inconnu";
-    if (genderRate === -1) return "Asexué (sans genre)";
-    var femalePct = Math.round((genderRate / 8) * 100);
-    var malePct = 100 - femalePct;
-    return (
-      "<div>♂ " + malePct + "% &nbsp;/&nbsp; ♀ " + femalePct + "%</div>" +
-      "<div class='gender-bar'>" +
-      "<span class='male-part' style='flex:" + malePct + "'></span>" +
-      "<span class='female-part' style='flex:" + femalePct + "'></span>" +
-      "</div>"
-    );
-  }
-
-  function renderPokedexBox(box, poke, data) {
-    var numberStr = "#" + String(poke.id).padStart(4, "0");
-    var typesHtml = data.types
-      .map(function (t) {
-        var color = TYPE_COLORS[t] || "#888";
-        var label = TYPE_FR[t] || t;
-        return "<span class='type-badge' style='background:" + color + "'>" + label + "</span>";
-      })
-      .join("");
-
-    var genusDisplay = data.genus || "";
-    if (genusDisplay && !/^pok[ée]mon\b/i.test(genusDisplay)) {
-      genusDisplay = "Pokémon " + genusDisplay;
-    }
-
-    box.innerHTML =
-      "<button type='button' class='pokedex-close-btn' id='pokedexCloseBtn' aria-label='Fermer'>&times;</button>" +
-      "<div class='pokedex-header'>" +
-      "<img src='" + spriteUrl(poke.id) + "' alt='" + poke.name + "'>" +
-      "<div>" +
-      "<div class='pokedex-number'>" + numberStr + "</div>" +
-      "<div class='pokedex-name'>" + poke.name + "</div>" +
-      "<div class='pokedex-types'>" + typesHtml + "</div>" +
-      (genusDisplay ? "<div class='pokedex-category'>" + genusDisplay + "</div>" : "") +
-      "</div>" +
-      "</div>" +
-      "<div class='pokedex-stats'>" +
-      "<div class='pokedex-stat'><span class='stat-label'>Taille</span><span class='stat-value'>" +
-      (data.height != null ? data.height.toFixed(1) + " m" : "-") +
-      "</span></div>" +
-      "<div class='pokedex-stat'><span class='stat-label'>Poids</span><span class='stat-value'>" +
-      (data.weight != null ? data.weight.toFixed(1) + " kg" : "-") +
-      "</span></div>" +
-      "<div class='pokedex-stat'><span class='stat-label'>Couleur</span><span class='stat-value'>" +
-      data.color +
-      "</span></div>" +
-      "<div class='pokedex-stat'><span class='stat-label'>Taux de capture</span><span class='stat-value'>" +
-      (data.captureRate != null ? data.captureRate : "-") +
-      "</span></div>" +
-      "<div class='pokedex-stat wide'><span class='stat-label'>Groupe(s) d'œufs</span><span class='stat-value'>" +
-      (data.eggGroups.length ? data.eggGroups.join(", ") : "-") +
-      "</span></div>" +
-      "<div class='pokedex-stat wide'><span class='stat-label'>Répartition des genres</span><span class='stat-value'>" +
-      genderStatHtml(data.genderRate) +
-      "</span></div>" +
-      "</div>" +
-      "<div class='pokedex-cry'>" +
-      "<span class='cry-label'>Cri officiel</span>" +
-      "<audio controls preload='none' src='" + criesUrl(poke.id) + "'>Ton navigateur ne supporte pas la lecture audio.</audio>" +
-      "</div>";
-
-    var closeBtn = document.getElementById("pokedexCloseBtn");
-    if (closeBtn) {
-      closeBtn.onclick = function () {
-        modalRoot.innerHTML = "";
-      };
-    }
-  }
-
-  function openPokedexModal(poke) {
-    modalRoot.innerHTML = "";
-    var overlay = document.createElement("div");
-    overlay.className = "modal-overlay";
-    var box = document.createElement("div");
-    box.className = "modal-box pokedex-box";
-    box.innerHTML = "<div class='pokedex-loading'>Chargement de la fiche Pokédex...</div>";
-    overlay.appendChild(box);
-    modalRoot.appendChild(overlay);
-
-    overlay.addEventListener("click", function (e) {
-      if (e.target === overlay) modalRoot.innerHTML = "";
-    });
-
-    fetchPokedexData(poke.id)
-      .then(function (data) {
-        renderPokedexBox(box, poke, data);
-      })
-      .catch(function () {
-        box.innerHTML =
-          "<div class='pokedex-loading'>Impossible de charger les informations du Pokédex pour le moment.</div>" +
-          "<div class='modal-actions'><button type='button' class='btn btn-grey' id='pokedexCloseErrBtn'>Fermer</button></div>";
-        var closeBtn = document.getElementById("pokedexCloseErrBtn");
-        if (closeBtn) {
-          closeBtn.onclick = function () {
-            modalRoot.innerHTML = "";
-          };
-        }
-      });
-  }
-
   var GRID_MODE_INFO = {
     normal: { label: "Grille normale", desc: "48 Pokémon tirés au hasard" },
     mega: { label: "Méga grille", desc: "Tous les Pokémon des générations choisies" },
@@ -245,6 +42,9 @@
   var myPlayerNum = null;
   var roomCode = null;
   var isHost = false;
+  var roomMode = "quiestce";
+  var roomPlayersCache = null;
+  var selectedCreateMode = "quiestce";
   var availableGenerations = []; // [{id,count}]
   var selectedGenerations = [1];
   var selectedGridMode = "normal";
@@ -253,6 +53,23 @@
   var myPickedSecret = null;
   var currentPlayer = 1;
   var guessMode = false;
+
+  // ---------- État local Mode Demi-Cercle ----------
+  var dcState = {
+    role: null,
+    phase: null,
+    round: 0,
+    totalRounds: 10,
+    master: null,
+    guesser: null,
+    pokemon: null,
+    masterPosition: null,
+    guesserPosition: 50,
+    myLocalPosition: 50,
+    scores: { 1: 0, 2: 0 },
+    lastRoundScore: null,
+    draggableEnabled: false,
+  };
 
   // ---------- Accueil ----------
   document.getElementById("btnGoCreate").addEventListener("click", function () {
@@ -275,15 +92,32 @@
     showOnly("home");
   });
 
+  function resetDcState() {
+    dcState.role = null;
+    dcState.phase = null;
+    dcState.round = 0;
+    dcState.master = null;
+    dcState.guesser = null;
+    dcState.pokemon = null;
+    dcState.masterPosition = null;
+    dcState.guesserPosition = 50;
+    dcState.myLocalPosition = 50;
+    dcState.scores = { 1: 0, 2: 0 };
+    dcState.lastRoundScore = null;
+    dcState.draggableEnabled = false;
+  }
+
   function resetLocalState() {
     myPlayerNum = null;
     roomCode = null;
     isHost = false;
+    roomMode = "quiestce";
     gamePokemons = [];
     localFlipped = {};
     myPickedSecret = null;
     currentPlayer = 1;
     guessMode = false;
+    resetDcState();
   }
 
   function resetRoundState() {
@@ -292,19 +126,34 @@
     myPickedSecret = null;
     currentPlayer = 1;
     guessMode = false;
+    resetDcState();
   }
+
+  // ---------- Sélection du mode de jeu (écran Créer) ----------
+  function setCreateMode(m) {
+    selectedCreateMode = m;
+    document.getElementById("modeCardQuiestce").classList.toggle("checked", m === "quiestce");
+    document.getElementById("modeCardDemicercle").classList.toggle("checked", m === "demicercle");
+  }
+  document.getElementById("modeCardQuiestce").addEventListener("click", function () {
+    setCreateMode("quiestce");
+  });
+  document.getElementById("modeCardDemicercle").addEventListener("click", function () {
+    setCreateMode("demicercle");
+  });
 
   // ---------- Création de lobby ----------
   document.getElementById("btnCreateSubmit").addEventListener("click", function () {
     var name = document.getElementById("createName").value.trim();
     if (!name) name = "Joueur 1";
-    socket.emit("create_room", { name: name });
+    socket.emit("create_room", { name: name, mode: selectedCreateMode });
   });
 
   socket.on("room_created", function (data) {
     myPlayerNum = data.playerNum;
     roomCode = data.code;
     isHost = true;
+    roomMode = data.room.mode || "quiestce";
     renderWaitingRoom(data.room);
     showOnly("waiting");
     loadGenerationsIfNeeded();
@@ -326,8 +175,10 @@
     myPlayerNum = data.playerNum;
     roomCode = data.code;
     isHost = data.playerNum === 1;
+    roomMode = data.room.mode || "quiestce";
     renderWaitingRoom(data.room);
     showOnly("waiting");
+    loadGenerationsIfNeeded();
   });
 
   socket.on("error_message", function (data) {
@@ -442,6 +293,8 @@
   function renderWaitingRoom(room) {
     document.getElementById("roomCodeDisplay").textContent = room.code;
     roomCode = room.code;
+    roomMode = room.mode || "quiestce";
+    roomPlayersCache = room.players;
     if (room.generations) selectedGenerations = room.generations.slice();
     if (room.gridMode) selectedGridMode = room.gridMode;
 
@@ -463,33 +316,44 @@
 
     var hostPicker = document.getElementById("hostGenPicker");
     var hostGridModePicker = document.getElementById("hostGridModePicker");
+    var dcHintHost = document.getElementById("dcModeHintHost");
     var guestInfo = document.getElementById("guestGenInfo");
     var startBtn = document.getElementById("btnStartGame");
     var waitMsg = document.getElementById("waitingForHostMsg");
 
     if (isHost) {
       hostPicker.classList.remove("hidden");
-      hostGridModePicker.classList.remove("hidden");
       guestInfo.classList.add("hidden");
       buildGenGrid();
-      buildGridModePicker();
+      if (roomMode === "demicercle") {
+        hostGridModePicker.classList.add("hidden");
+        dcHintHost.classList.remove("hidden");
+      } else {
+        hostGridModePicker.classList.remove("hidden");
+        dcHintHost.classList.add("hidden");
+        buildGridModePicker();
+      }
       var bothHere = room.players[1] && room.players[1].connected && room.players[2] && room.players[2].connected;
       startBtn.classList.remove("hidden");
       startBtn.disabled = !bothHere;
+      startBtn.textContent = roomMode === "demicercle" ? "Démarrer le Demi-Cercle" : "Démarrer la partie";
       waitMsg.classList.add("hidden");
     } else {
       hostPicker.classList.add("hidden");
       hostGridModePicker.classList.add("hidden");
+      dcHintHost.classList.add("hidden");
       guestInfo.classList.remove("hidden");
       var gridModeInfo = GRID_MODE_INFO[room.gridMode] || GRID_MODE_INFO.normal;
+      var modeTag = '<span class="tag">' + (roomMode === "demicercle" ? "Mode Demi-Cercle" : "Mode Qui est-ce ?") + "</span><br>";
       guestInfo.innerHTML =
+        modeTag +
         "Générations choisies par l'hôte : " +
         room.generations
           .map(function (g) {
             return '<span class="tag">Gen ' + g + "</span>";
           })
           .join(" ") +
-        '<br><span class="tag">' + gridModeInfo.label + "</span>";
+        (roomMode === "demicercle" ? "" : '<br><span class="tag">' + gridModeInfo.label + "</span>");
       startBtn.classList.add("hidden");
       waitMsg.classList.remove("hidden");
     }
@@ -516,12 +380,16 @@
   });
 
   socket.on("players_update", function (room) {
+    roomPlayersCache = room.players;
     if (screens.waiting.classList.contains("hidden") === false) {
       renderWaitingRoom(room);
     }
     // Statut replay pendant l'écran victoire
     if (screens.victory.classList.contains("hidden") === false) {
       updateReplayStatus(room);
+    }
+    if (screens.demicercleVictory.classList.contains("hidden") === false) {
+      updateDcReplayStatus(room);
     }
   });
 
@@ -533,7 +401,7 @@
     showOnly("waiting");
   });
 
-  // ---------- Phase de choix du secret ----------
+  // ---------- Phase de choix du secret (mode Qui est-ce ?) ----------
   socket.on("game_started", function (data) {
     gamePokemons = data.gamePokemons;
     localFlipped = {};
@@ -615,7 +483,7 @@
     });
   }
 
-  // ---------- Partie principale ----------
+  // ---------- Partie principale (mode Qui est-ce ?) ----------
   socket.on("game_ready", function (data) {
     currentPlayer = data.currentPlayer;
     guessMode = data.guessMode;
@@ -649,20 +517,6 @@
     inner.appendChild(front);
     inner.appendChild(back);
     card.appendChild(inner);
-
-    var infoBtn = document.createElement("button");
-    infoBtn.type = "button";
-    infoBtn.className = "info-btn";
-    infoBtn.textContent = "i";
-    infoBtn.setAttribute("aria-label", "Voir la fiche Pokédex de " + pokeData.name);
-    infoBtn.addEventListener("click", function (e) {
-      e.stopPropagation();
-      e.preventDefault();
-      openPokedexModal(pokeData);
-    });
-    // Bouton positionné en dehors de la carte à effet 3D (card-inner) afin de
-    // rester lisible et cliquable quelle que soit la face affichée.
-    card.appendChild(infoBtn);
 
     if (faceUpForced === false) card.classList.add("flipped");
     return card;
@@ -759,7 +613,7 @@
     };
   });
 
-  // ---------- Victoire ----------
+  // ---------- Victoire (mode Qui est-ce ?) ----------
   socket.on("victory", function (data) {
     var iWon = data.winner === myPlayerNum;
     document.getElementById("victoryTitle").textContent = iWon
@@ -797,8 +651,354 @@
     }
   }
 
+  function updateDcReplayStatus(room) {
+    var status = document.getElementById("dcReplayStatus");
+    var p1 = room.players[1],
+      p2 = room.players[2];
+    var c1 = p1 && p1.replayReady;
+    var c2 = p2 && p2.replayReady;
+    if (c1 && c2) {
+      status.textContent = "Les deux joueurs sont prêts, retour à la salle d'attente...";
+    } else if (c1 || c2) {
+      var readyName = c1 ? p1.name : p2.name;
+      status.textContent = readyName + " est prêt(e). En attente de l'autre joueur...";
+    } else {
+      status.textContent = "En attente des deux joueurs...";
+    }
+  }
+
+  // =====================================================================
+  // ============ MODE DEMI-CERCLE (inspiré de Wavelength) ==============
+  // =====================================================================
+
+  var DC_CENTER = { x: 160, y: 178 };
+  var DC_RADIUS = 150;
+  var DC_ZONES_DEF = [
+    { half: 18, cls: "dc-zone-2" },
+    { half: 10, cls: "dc-zone-3" },
+    { half: 4, cls: "dc-zone-4" },
+  ];
+
+  function dcPointAt(p, r) {
+    var angle = Math.PI * (1 - p / 100);
+    return {
+      x: DC_CENTER.x + r * Math.cos(angle),
+      y: DC_CENTER.y - r * Math.sin(angle),
+    };
+  }
+
+  function dcSetDotPosition(dotEl, needleEl, position) {
+    var pt = dcPointAt(position, DC_RADIUS);
+    dotEl.setAttribute("cx", pt.x);
+    dotEl.setAttribute("cy", pt.y);
+    needleEl.setAttribute("x1", DC_CENTER.x);
+    needleEl.setAttribute("y1", DC_CENTER.y);
+    needleEl.setAttribute("x2", pt.x);
+    needleEl.setAttribute("y2", pt.y);
+  }
+
+  function dcArcPath(p1, p2, r) {
+    var a = dcPointAt(Math.max(0, p1), r);
+    var b = dcPointAt(Math.min(100, p2), r);
+    return "M " + a.x + " " + a.y + " A " + r + " " + r + " 0 0 1 " + b.x + " " + b.y;
+  }
+
+  function dcDrawTrack() {
+    var left = dcPointAt(0, DC_RADIUS);
+    var top = dcPointAt(50, DC_RADIUS);
+    var right = dcPointAt(100, DC_RADIUS);
+    var d =
+      "M " + left.x + " " + left.y +
+      " A " + DC_RADIUS + " " + DC_RADIUS + " 0 0 1 " + top.x + " " + top.y +
+      " A " + DC_RADIUS + " " + DC_RADIUS + " 0 0 1 " + right.x + " " + right.y;
+    document.getElementById("dcTrack").setAttribute("d", d);
+  }
+  dcDrawTrack();
+
+  function dcDrawZones(masterPosition) {
+    var zonesG = document.getElementById("dcZones");
+    zonesG.innerHTML = "";
+    DC_ZONES_DEF.forEach(function (z) {
+      var p1 = masterPosition - z.half;
+      var p2 = masterPosition + z.half;
+      if (p2 <= 0 || p1 >= 100) return;
+      var path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", dcArcPath(p1, p2, DC_RADIUS));
+      path.setAttribute("class", "dc-zone " + z.cls);
+      zonesG.appendChild(path);
+    });
+  }
+
+  // ---------- Interaction (glisser-déposer sur le demi-cercle) ----------
+  var dcSvgEl = document.getElementById("dcSvg");
+  var dcDragActive = false;
+
+  function dcPositionFromEvent(evt) {
+    var rect = dcSvgEl.getBoundingClientRect();
+    var viewBoxW = 320,
+      viewBoxH = 190;
+    var scaleX = viewBoxW / rect.width;
+    var scaleY = viewBoxH / rect.height;
+    var clientX = evt.clientX !== undefined ? evt.clientX : evt.touches && evt.touches[0].clientX;
+    var clientY = evt.clientY !== undefined ? evt.clientY : evt.touches && evt.touches[0].clientY;
+    var x = (clientX - rect.left) * scaleX;
+    var y = (clientY - rect.top) * scaleY;
+    var dx = x - DC_CENTER.x;
+    var dy = DC_CENTER.y - y;
+
+    var angleDeg;
+    if (dy >= 0) {
+      angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI; // 0..180
+    } else {
+      angleDeg = dx >= 0 ? 0 : 180;
+    }
+    if (angleDeg < 0) angleDeg = 0;
+    if (angleDeg > 180) angleDeg = 180;
+    var position = 100 - (angleDeg / 180) * 100;
+    return Math.max(0, Math.min(100, position));
+  }
+
+  var dcMoveThrottleTimer = null;
+  var dcPendingMove = null;
+  function dcThrottledEmitMove(pos) {
+    dcPendingMove = pos;
+    if (dcMoveThrottleTimer) return;
+    dcMoveThrottleTimer = setTimeout(function () {
+      dcMoveThrottleTimer = null;
+      if (dcPendingMove !== null) {
+        socket.emit("demicercle_guesser_move", { code: roomCode, position: dcPendingMove });
+        dcPendingMove = null;
+      }
+    }, 60);
+  }
+
+  function dcHandlePointerMove(evt) {
+    if (!dcDragActive) return;
+    var pos = dcPositionFromEvent(evt);
+    dcState.myLocalPosition = pos;
+    var myDot = document.getElementById("dcMyDot");
+    var myNeedle = document.getElementById("dcMyNeedle");
+    dcSetDotPosition(myDot, myNeedle, pos);
+    if (dcState.role === "guesser" && dcState.phase === "guessing") {
+      dcThrottledEmitMove(pos);
+    }
+  }
+  function dcHandlePointerDown(evt) {
+    if (!dcState.draggableEnabled) return;
+    dcDragActive = true;
+    dcHandlePointerMove(evt);
+    evt.preventDefault();
+  }
+  function dcHandlePointerUp() {
+    dcDragActive = false;
+  }
+  dcSvgEl.addEventListener("pointerdown", dcHandlePointerDown);
+  window.addEventListener("pointermove", dcHandlePointerMove);
+  window.addEventListener("pointerup", dcHandlePointerUp);
+
+  function dcSetDraggable(enabled) {
+    dcState.draggableEnabled = enabled;
+  }
+
+  // ---------- Rendu de l'écran Demi-Cercle ----------
+  function renderDcScreen() {
+    document.getElementById("dcRoundNum").textContent = dcState.round;
+    document.getElementById("dcTotalRounds").textContent = dcState.totalRounds;
+
+    var p1Name = roomPlayersCache && roomPlayersCache[1] ? roomPlayersCache[1].name : "Joueur 1";
+    var p2Name = roomPlayersCache && roomPlayersCache[2] ? roomPlayersCache[2].name : "Joueur 2";
+    document.getElementById("dcScoreP1Name").textContent = p1Name;
+    document.getElementById("dcScoreP2Name").textContent = p2Name;
+    document.getElementById("dcScoreP1").textContent = dcState.scores[1] || 0;
+    document.getElementById("dcScoreP2").textContent = dcState.scores[2] || 0;
+
+    var isMaster = dcState.role === "master";
+    var roleBadge = document.getElementById("dcRoleBadge");
+    roleBadge.textContent = isMaster ? "Tu es le Maître du round 🤫" : "Tu es le Devineur 🔎";
+    roleBadge.className = "dc-role-badge " + (isMaster ? "dc-role-master" : "dc-role-guesser");
+
+    var pokePanel = document.getElementById("dcPokemonPanel");
+    var hiddenMsg = document.getElementById("dcPokemonHiddenMsg");
+    if (dcState.pokemon) {
+      pokePanel.classList.remove("hidden");
+      hiddenMsg.classList.add("hidden");
+      document.getElementById("dcPokemonImg").src = spriteUrl(dcState.pokemon.id);
+      document.getElementById("dcPokemonName").textContent = dcState.pokemon.name;
+    } else {
+      pokePanel.classList.add("hidden");
+      hiddenMsg.classList.remove("hidden");
+      hiddenMsg.textContent = "Le Maître du round choisit sa position secrète, patiente un instant...";
+    }
+
+    var myDot = document.getElementById("dcMyDot");
+    var myNeedle = document.getElementById("dcMyNeedle");
+    var otherDot = document.getElementById("dcOtherDot");
+    var otherNeedle = document.getElementById("dcOtherNeedle");
+    var revealPanel = document.getElementById("dcRevealPanel");
+    var zonesG = document.getElementById("dcZones");
+    var btnValidateMaster = document.getElementById("btnDcValidateMaster");
+    var btnValidateGuesser = document.getElementById("btnDcValidateGuesser");
+    var btnContinue = document.getElementById("btnDcContinue");
+    var waitMsg = document.getElementById("dcWaitMsg");
+
+    // Réinitialisation propre avant d'appliquer l'état de la phase
+    myDot.className = "dc-dot dc-dot-mine hidden";
+    myNeedle.className = "dc-needle dc-needle-mine hidden";
+    otherDot.className = "dc-dot dc-dot-other hidden";
+    otherNeedle.className = "dc-needle dc-needle-other hidden";
+    btnValidateMaster.classList.add("hidden");
+    btnValidateGuesser.classList.add("hidden");
+    btnContinue.classList.add("hidden");
+    waitMsg.classList.add("hidden");
+    revealPanel.classList.add("hidden");
+    zonesG.innerHTML = "";
+    dcSetDraggable(false);
+
+    if (dcState.phase === "master_placing") {
+      if (isMaster) {
+        myDot.classList.remove("hidden");
+        myNeedle.classList.remove("hidden");
+        dcSetDotPosition(myDot, myNeedle, dcState.myLocalPosition);
+        dcSetDraggable(true);
+        btnValidateMaster.classList.remove("hidden");
+      } else {
+        waitMsg.classList.remove("hidden");
+        waitMsg.textContent = "Le Maître du round choisit sa position secrète...";
+      }
+    } else if (dcState.phase === "guessing") {
+      if (isMaster) {
+        myDot.classList.remove("hidden");
+        myNeedle.classList.remove("hidden");
+        myDot.classList.add("dc-dot-locked");
+        dcSetDotPosition(myDot, myNeedle, dcState.masterPosition);
+        otherDot.classList.remove("hidden");
+        otherNeedle.classList.remove("hidden");
+        dcSetDotPosition(otherDot, otherNeedle, dcState.guesserPosition);
+        waitMsg.classList.remove("hidden");
+        waitMsg.textContent = "Le Devineur réfléchit, débattez à l'oral !";
+      } else {
+        myDot.classList.remove("hidden");
+        myNeedle.classList.remove("hidden");
+        dcSetDotPosition(myDot, myNeedle, dcState.myLocalPosition);
+        dcSetDraggable(true);
+        btnValidateGuesser.classList.remove("hidden");
+      }
+    } else if (dcState.phase === "revealed") {
+      dcDrawZones(dcState.masterPosition);
+
+      otherDot.classList.remove("hidden");
+      otherNeedle.classList.remove("hidden");
+      otherDot.classList.add("dc-dot-master-reveal");
+      dcSetDotPosition(otherDot, otherNeedle, dcState.masterPosition);
+
+      myDot.classList.remove("hidden");
+      myNeedle.classList.remove("hidden");
+      myDot.classList.add("dc-dot-guesser-reveal");
+      dcSetDotPosition(myDot, myNeedle, dcState.guesserPosition);
+
+      revealPanel.classList.remove("hidden");
+      var pts = dcState.lastRoundScore || 0;
+      document.getElementById("dcRevealPoints").textContent = "+" + pts + (pts > 1 ? " points" : " point");
+      var guesserName = dcState.guesser === 1 ? p1Name : p2Name;
+      document.getElementById("dcRevealDetail").textContent =
+        guesserName + " marque " + pts + " point(s) sur ce round.";
+      btnContinue.classList.remove("hidden");
+    }
+  }
+
+  function applyDcRoundData(data) {
+    dcState.role = data.role;
+    dcState.phase = data.phase;
+    dcState.round = data.round;
+    dcState.totalRounds = data.totalRounds;
+    dcState.master = data.master;
+    dcState.guesser = data.guesser;
+    dcState.pokemon = data.pokemon;
+    dcState.masterPosition = data.masterPosition;
+    dcState.guesserPosition = data.guesserPosition;
+    dcState.scores = data.scores;
+    dcState.lastRoundScore = data.lastRoundScore;
+    if (dcState.role === "master" && dcState.phase === "master_placing") {
+      dcState.myLocalPosition = 50;
+    } else if (dcState.role === "guesser" && dcState.phase === "guessing") {
+      dcState.myLocalPosition = data.guesserPosition;
+    }
+    renderDcScreen();
+  }
+
+  socket.on("demicercle_round_start", function (data) {
+    document.getElementById("btnDcContinue").disabled = false;
+    applyDcRoundData(data);
+    showOnly("demicercle");
+  });
+
+  socket.on("demicercle_guesser_move_update", function (data) {
+    if (dcState.role !== "master" || dcState.phase !== "guessing") return;
+    dcState.guesserPosition = data.position;
+    var otherDot = document.getElementById("dcOtherDot");
+    var otherNeedle = document.getElementById("dcOtherNeedle");
+    if (!otherDot.classList.contains("hidden")) {
+      dcSetDotPosition(otherDot, otherNeedle, data.position);
+    }
+  });
+
+  socket.on("demicercle_continue_status", function (data) {
+    var mine = data.continueReady[myPlayerNum];
+    if (!mine) return;
+    var waitMsg = document.getElementById("dcWaitMsg");
+    waitMsg.classList.remove("hidden");
+    waitMsg.textContent = "En attente que l'autre joueur clique sur Continuer...";
+    document.getElementById("btnDcContinue").classList.add("hidden");
+  });
+
+  socket.on("demicercle_game_over", function (data) {
+    var iWon = data.winner === myPlayerNum;
+    var title, text;
+    if (data.winner === null) {
+      title = "ÉGALITÉ !";
+      text = "Vous avez fini à égalité, beau duel !";
+    } else if (iWon) {
+      title = "TU AS GAGNÉ !";
+      text = "Bravo, tu as le meilleur total de points sur les 10 rounds !";
+    } else {
+      title = data.winnerName + " GAGNE !";
+      text = data.winnerName + " a remporté le plus grand nombre de points.";
+    }
+    document.getElementById("dcVictoryTitle").textContent = title;
+    document.getElementById("dcVictoryText").textContent = text;
+
+    var p1Name = roomPlayersCache && roomPlayersCache[1] ? roomPlayersCache[1].name : "Joueur 1";
+    var p2Name = roomPlayersCache && roomPlayersCache[2] ? roomPlayersCache[2].name : "Joueur 2";
+    var scoresEl = document.getElementById("dcFinalScores");
+    scoresEl.innerHTML =
+      '<div class="dc-final-score-box"><span>' + p1Name + "</span><strong>" + (data.scores[1] || 0) + "</strong></div>" +
+      '<div class="dc-final-score-box"><span>' + p2Name + "</span><strong>" + (data.scores[2] || 0) + "</strong></div>";
+
+    document.getElementById("btnDcReplay").disabled = false;
+    document.getElementById("dcReplayStatus").textContent = "En attente des deux joueurs...";
+    showOnly("demicercleVictory");
+  });
+
+  document.getElementById("btnDcValidateMaster").addEventListener("click", function () {
+    socket.emit("demicercle_master_submit", { code: roomCode, position: dcState.myLocalPosition });
+    dcSetDraggable(false);
+  });
+  document.getElementById("btnDcValidateGuesser").addEventListener("click", function () {
+    socket.emit("demicercle_guesser_submit", { code: roomCode, position: dcState.myLocalPosition });
+    dcSetDraggable(false);
+  });
+  document.getElementById("btnDcContinue").addEventListener("click", function () {
+    document.getElementById("btnDcContinue").disabled = true;
+    socket.emit("demicercle_continue", { code: roomCode });
+  });
+  document.getElementById("btnDcReplay").addEventListener("click", function () {
+    document.getElementById("btnDcReplay").disabled = true;
+    socket.emit("replay_vote", { code: roomCode });
+  });
+
   // ---------- Reconnexion / resynchronisation ----------
   socket.on("resync", function (data) {
+    roomMode = data.mode || "quiestce";
     selectedGenerations = data.generations.slice();
     if (data.gridMode) selectedGridMode = data.gridMode;
     gamePokemons = data.gamePokemons || [];
@@ -824,6 +1024,19 @@
       document.getElementById("victorySecretImg").src = spriteUrl(data.secretFound.id);
       document.getElementById("victorySecretName").textContent = data.secretFound.name;
       showOnly("victory");
+    } else if (data.status === "demicercle" && data.demiCercle) {
+      applyDcRoundData(data.demiCercle);
+      showOnly("demicercle");
+    } else if (data.status === "demicercle_over") {
+      var dc = data.demiCercle || { scores: { 1: 0, 2: 0 } };
+      var p1Name = roomPlayersCache && roomPlayersCache[1] ? roomPlayersCache[1].name : "Joueur 1";
+      var p2Name = roomPlayersCache && roomPlayersCache[2] ? roomPlayersCache[2].name : "Joueur 2";
+      document.getElementById("dcVictoryTitle").textContent = "FIN DE LA PARTIE";
+      document.getElementById("dcVictoryText").textContent = "La partie est terminée.";
+      document.getElementById("dcFinalScores").innerHTML =
+        '<div class="dc-final-score-box"><span>' + p1Name + "</span><strong>" + (dc.scores[1] || 0) + "</strong></div>" +
+        '<div class="dc-final-score-box"><span>' + p2Name + "</span><strong>" + (dc.scores[2] || 0) + "</strong></div>";
+      showOnly("demicercleVictory");
     }
   });
 
