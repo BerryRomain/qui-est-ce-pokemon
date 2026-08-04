@@ -974,3 +974,304 @@ html,body{
 @media (max-width:760px){
   .info-modal-grid{ grid-template-columns:1fr; }
 }
+
+/* ============================================================ */
+/* ================= MODE DEVIN'MON ============================ */
+/* ============================================================ */
+
+/* Encart explicatif du score (règle du golf : le moins de points possible) */
+.dm-score-explainer{
+  background:var(--pd-yellow);
+  border:4px solid var(--pd-dark);
+  border-radius:14px;
+  padding:12px 18px;
+  margin-bottom:18px;
+  font-weight:700;
+  font-size:0.92rem;
+  color:var(--pd-dark);
+  text-align:center;
+}
+
+/* En-tête de manche */
+.dm-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  flex-wrap:wrap;
+  background:var(--pd-blue);
+  border:5px solid var(--pd-dark);
+  border-radius:18px;
+  padding:12px 18px;
+  margin-bottom:16px;
+}
+.dm-round-badge{
+  color:#fff;
+  font-size:0.75rem;
+  background:var(--pd-red);
+  border:3px solid var(--pd-dark);
+  border-radius:10px;
+  padding:8px 12px;
+}
+.dm-role-badge{
+  color:#fff;
+  font-weight:800;
+  font-size:0.95rem;
+  padding:8px 14px;
+  border-radius:12px;
+  border:3px solid var(--pd-dark);
+  text-shadow:1px 1px 0 rgba(0,0,0,0.3);
+  background:#27AE60;
+}
+.dm-role-badge.dm-role-guessing{ background:var(--pd-red); }
+
+/* Tableau des scores (le plus bas gagne) */
+.dm-scoreboard{
+  display:flex;
+  gap:10px;
+  justify-content:center;
+  flex-wrap:wrap;
+  margin-bottom:18px;
+}
+.dm-score-box{
+  background:#fff;
+  border:3px solid var(--pd-dark);
+  border-radius:12px;
+  padding:8px 14px;
+  text-align:center;
+  min-width:100px;
+}
+.dm-score-box.dm-score-guide{ box-shadow:0 0 0 3px var(--pd-yellow) inset; }
+.dm-score-box.dm-score-found .dm-score-name{ color:#1e9e52; }
+.dm-score-box.dm-score-abandoned .dm-score-name{ color:#b22a0a; }
+.dm-score-name{
+  display:block;
+  font-size:0.72rem;
+  color:#666;
+  font-weight:800;
+}
+.dm-score-val{
+  display:block;
+  font-size:1.2rem;
+  font-weight:800;
+  color:var(--pd-red-dark);
+}
+
+/* Panneau du Guide (voit le Pokémon secret) */
+.dm-guide-panel{
+  background:#fff;
+  border:4px solid var(--pd-dark);
+  border-radius:16px;
+  padding:14px 18px;
+  margin-bottom:16px;
+  max-width:560px;
+  margin-left:auto;
+  margin-right:auto;
+}
+.dm-secret-box{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  margin-bottom:14px;
+}
+.dm-secret-box img{
+  width:70px;height:70px;
+  object-fit:contain;
+  background:#f6f6f6;
+  border:3px solid var(--pd-dark);
+  border-radius:10px;
+}
+.dm-secret-label{
+  font-size:0.65rem;
+  color:var(--pd-red);
+  display:block;
+  margin-bottom:2px;
+}
+.dm-secret-name{ font-size:1.2rem; font-weight:800; color:var(--pd-dark); }
+.dm-clue-input-row{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.dm-clue-input-row input{
+  flex:1;
+  min-width:180px;
+  font-family:'Baloo 2', cursive;
+  font-size:1rem;
+  padding:10px 14px;
+  border-radius:12px;
+  border:3px solid var(--pd-dark);
+  outline:none;
+}
+.dm-clue-input-row input:focus{ border-color:var(--pd-blue); }
+
+/* Panneau des Devineurs */
+.dm-guesser-panel{
+  max-width:560px;
+  margin:0 auto 10px;
+}
+.dm-guess-input-row{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  justify-content:center;
+}
+.dm-guess-input-row input{
+  flex:1;
+  min-width:160px;
+  font-family:'Baloo 2', cursive;
+  font-size:1rem;
+  padding:10px 14px;
+  border-radius:12px;
+  border:3px solid var(--pd-dark);
+  outline:none;
+}
+.dm-guess-input-row input:focus{ border-color:var(--pd-blue); }
+
+.dm-found-msg{
+  text-align:center;
+  background:#e5fbee;
+  border:3px solid #1e9e52;
+  color:#1e9e52;
+  font-weight:800;
+  border-radius:14px;
+  padding:12px 16px;
+  margin:0 auto 16px;
+  max-width:400px;
+}
+.dm-abandoned-msg{
+  text-align:center;
+  background:#fdeceb;
+  border:3px solid var(--pd-red-dark);
+  color:var(--pd-red-dark);
+  font-weight:800;
+  border-radius:14px;
+  padding:12px 16px;
+  margin:0 auto 16px;
+  max-width:400px;
+}
+
+/* Indices cumulatifs */
+.dm-clues-panel{
+  background:#fff;
+  border:4px solid var(--pd-dark);
+  border-radius:16px;
+  padding:14px 18px;
+  margin-bottom:16px;
+  max-width:560px;
+  margin-left:auto;
+  margin-right:auto;
+}
+.dm-clues-panel h3{ margin:0 0 10px; color:var(--pd-blue-dark); }
+.dm-clues-list{
+  margin:0;
+  padding-left:22px;
+}
+.dm-clues-list li{
+  font-size:0.95rem;
+  margin-bottom:6px;
+  color:#333;
+}
+.dm-no-clue-msg{ color:#888; font-style:italic; margin:0; font-size:0.88rem; }
+
+/* Feed des propositions en direct */
+.dm-feed-panel{
+  background:#fff;
+  border:4px solid var(--pd-dark);
+  border-radius:16px;
+  padding:14px 18px;
+  margin-bottom:16px;
+  max-width:560px;
+  margin-left:auto;
+  margin-right:auto;
+  max-height:260px;
+  overflow-y:auto;
+}
+.dm-feed-panel h3{ margin:0 0 10px; color:var(--pd-blue-dark); }
+.dm-feed-list{ display:flex; flex-direction:column; gap:6px; }
+.dm-feed-item{
+  display:flex;
+  align-items:baseline;
+  gap:8px;
+  padding:6px 10px;
+  border-radius:10px;
+  background:#f4f6fb;
+  font-size:0.9rem;
+}
+.dm-feed-item .dm-feed-name{ font-weight:800; color:var(--pd-blue-dark); }
+.dm-feed-item.dm-feed-correct{ background:#e5fbee; }
+.dm-feed-item.dm-feed-correct .dm-feed-name{ color:#1e9e52; }
+.dm-feed-item.dm-feed-abandoned{ background:#fdeceb; }
+.dm-feed-item.dm-feed-abandoned .dm-feed-name{ color:var(--pd-red-dark); }
+.dm-no-feed-msg{ color:#888; font-style:italic; margin:0; font-size:0.88rem; }
+
+/* Pseudo vert quand trouvé */
+.dm-name-found{ color:#1e9e52 !important; font-weight:800; }
+.dm-name-abandoned{ color:var(--pd-red-dark) !important; font-weight:800; }
+
+/* Panneau de révélation en fin de manche */
+.dm-reveal-panel{
+  text-align:center;
+  background:#fff;
+  border:4px solid var(--pd-dark);
+  border-radius:16px;
+  padding:18px 20px;
+  margin:0 auto 16px;
+  max-width:480px;
+}
+.dm-reveal-secret{
+  display:inline-flex;
+  align-items:center;
+  gap:14px;
+  margin-bottom:14px;
+}
+.dm-reveal-secret img{ width:70px; height:70px; object-fit:contain; }
+.dm-round-points{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  justify-content:center;
+  margin-bottom:16px;
+}
+.dm-round-point-box{
+  background:#f4f6fb;
+  border:3px solid var(--pd-dark);
+  border-radius:10px;
+  padding:6px 12px;
+  font-size:0.85rem;
+  font-weight:700;
+}
+
+/* Fin de partie Devin'Mon */
+.dm-final-scores{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  max-width:420px;
+  margin:16px auto 20px;
+}
+.dm-final-score-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  background:#fff;
+  border:4px solid var(--pd-dark);
+  border-radius:14px;
+  padding:10px 18px;
+}
+.dm-final-score-row.dm-final-winner{
+  border-color:var(--pd-yellow);
+  box-shadow:0 0 0 3px var(--pd-yellow) inset;
+}
+.dm-final-rank{
+  font-family:'Press Start 2P', cursive;
+  font-size:0.75rem;
+  color:var(--pd-blue-dark);
+  margin-right:12px;
+}
+.dm-final-name{ font-weight:800; flex:1; text-align:left; }
+.dm-final-total{ font-size:1.3rem; font-weight:800; color:var(--pd-red-dark); }
+
+@media (max-width:760px){
+  .dm-header{ flex-direction:column; align-items:stretch; text-align:center; }
+}

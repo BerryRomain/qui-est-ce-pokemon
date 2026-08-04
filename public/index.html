@@ -23,12 +23,12 @@
   <div id="screen-home" class="screen">
     <div class="home-inner">
       <h2 class="pixel">Bienvenue dresseurs !</h2>
-      <p>Choisis un mode de jeu et affronte un ami en ligne grâce à un lobby !</p>
+      <p>Choisis un mode de jeu et affronte tes amis en ligne grâce à un lobby !</p>
       <div class="home-choices">
         <div class="choice-card" id="btnGoCreate">
           <div class="emoji">🎮</div>
           <h3>Créer un lobby</h3>
-          <p>Deviens l'hôte, choisis le mode de jeu, les générations de Pokémon et invite ton ami avec un code.</p>
+          <p>Deviens l'hôte, choisis le mode de jeu, les générations de Pokémon et invite tes amis avec un code.</p>
         </div>
         <div class="choice-card" id="btnGoJoin">
           <div class="emoji">🔑</div>
@@ -56,6 +56,17 @@
           <h3>Demi-Cercle</h3>
           <p>10 rounds : place le curseur, devine l'avis secret du Maître du round.</p>
         </div>
+        <div class="mode-card" data-mode="devinmon" id="modeCardDevinmon">
+          <div class="emoji">🧩</div>
+          <h3>Devin'Mon</h3>
+          <p>2 à 6 joueurs. Un Guide donne des indices, les autres devinent avec le moins d'indices possible.</p>
+        </div>
+      </div>
+
+      <div id="devinmonPlayerCountPicker" class="grid-mode-picker hidden">
+        <h3 class="pixel" style="font-size:0.85rem;">Nombre de joueurs</h3>
+        <p class="gen-hint">De 2 à 6 joueurs. Chacun sera le Guide exactement 2 fois pendant la partie.</p>
+        <div class="grid-mode-options" id="devinmonPlayerCountOptions"></div>
       </div>
 
       <div class="name-fields">
@@ -115,6 +126,7 @@
       </div>
 
       <p id="dcModeHintHost" class="gen-hint dc-hint hidden">Mode Demi-Cercle : 10 Pokémon aléatoires seront tirés (un par round) parmi les générations choisies.</p>
+      <p id="dmModeHintHost" class="gen-hint dc-hint hidden">Mode Devin'Mon : chaque joueur sera le Guide 2 fois. Assure-toi d'avoir sélectionné assez de générations.</p>
 
       <div id="guestGenInfo" class="gen-readonly hidden"></div>
 
@@ -247,7 +259,83 @@
     <div class="replay-status" id="dcReplayStatus">En attente des deux joueurs...</div>
   </div>
 
-  <div class="footer-note">Sprites officiels via PokeAPI · Jeu multijoueur en ligne, invite un ami avec un code de lobby.</div>
+  <!-- DEVIN'MON : MANCHE -->
+  <div id="screen-devinmon" class="screen hidden">
+    <div class="dm-score-explainer">
+      🏌️ But du jeu : comme au golf, marque le <strong>MOINS de points possible</strong> ! Chaque indice donné ajoute
+      +1 point à ta manche. Trouve vite, ou abandonne si tu es bloqué (tu prendras le score max de la manche).
+    </div>
+
+    <div class="dm-header">
+      <div class="dm-round-badge pixel">MANCHE <span id="dmRoundNum">1</span>/<span id="dmTotalRounds">6</span></div>
+      <div class="dm-role-badge" id="dmRoleBadge">Tu es le Guide</div>
+    </div>
+
+    <div class="dm-scoreboard" id="dmScoreboard"></div>
+
+    <div class="dm-guide-panel hidden" id="dmGuidePanel">
+      <div class="dm-secret-box">
+        <img id="dmSecretImg" src="" alt="">
+        <div>
+          <span class="dm-secret-label pixel">POKÉMON SECRET</span>
+          <span class="dm-secret-name" id="dmSecretName">-</span>
+        </div>
+      </div>
+      <div class="dm-clue-input-row">
+        <input id="dmClueInput" type="text" maxlength="140" placeholder="Écris un indice...">
+        <button class="btn btn-blue" id="btnDmSubmitClue">Ajouter l'indice</button>
+      </div>
+    </div>
+
+    <div class="dm-guesser-panel hidden" id="dmGuesserPanel">
+      <div class="dm-guess-input-row">
+        <input id="dmGuessInput" type="text" maxlength="60" placeholder="Ta proposition...">
+        <button class="btn btn-green" id="btnDmSubmitGuess">Proposer</button>
+        <button class="btn btn-grey" id="btnDmAbandon">Abandonner</button>
+      </div>
+    </div>
+    <div class="dm-found-msg hidden" id="dmFoundMsg">🎉 Victoire ! Tu as trouvé le Pokémon secret.</div>
+    <div class="dm-abandoned-msg hidden" id="dmAbandonedMsg">Tu as abandonné cette manche.</div>
+
+    <div class="dm-clues-panel">
+      <h3 class="pixel" style="font-size:0.8rem;">Indices donnés</h3>
+      <ol class="dm-clues-list" id="dmCluesList"></ol>
+      <p class="dm-no-clue-msg" id="dmNoClueMsg">Aucun indice pour le moment.</p>
+    </div>
+
+    <div class="dm-feed-panel">
+      <h3 class="pixel" style="font-size:0.8rem;">Propositions en direct</h3>
+      <div class="dm-feed-list" id="dmFeedList"></div>
+      <p class="dm-no-feed-msg" id="dmNoFeedMsg">Aucune proposition pour le moment.</p>
+    </div>
+
+    <div class="dm-reveal-panel hidden" id="dmRevealPanel">
+      <div class="dm-reveal-secret">
+        <img id="dmRevealImg" src="" alt="">
+        <div>
+          <div style="font-size:0.8rem;color:#555;">Le Pokémon secret était</div>
+          <div id="dmRevealName" style="font-weight:800;font-size:1.2rem;">-</div>
+        </div>
+      </div>
+      <div class="dm-round-points" id="dmRoundPoints"></div>
+      <button class="btn btn-blue btn-lg" id="btnDmContinue">Manche suivante</button>
+      <p class="pick-wait-msg hidden" id="dmWaitMsg">En attente des autres joueurs...</p>
+    </div>
+  </div>
+
+  <!-- DEVIN'MON : FIN DE PARTIE -->
+  <div id="screen-devinmon-victory" class="screen hidden">
+    <div class="trophy">🏆</div>
+    <h2 class="pixel" id="dmVictoryTitle">FIN DE LA PARTIE</h2>
+    <p>Classement final (le score le plus bas gagne) :</p>
+    <div class="dm-final-scores" id="dmFinalScores"></div>
+    <div class="replay-row">
+      <button class="btn btn-green" id="btnDmReplay">Rejouer (modifier les paramètres)</button>
+    </div>
+    <div class="replay-status" id="dmReplayStatus">En attente de tous les joueurs...</div>
+  </div>
+
+  <div class="footer-note">Sprites officiels via PokeAPI · Jeu multijoueur en ligne, invite tes amis avec un code de lobby.</div>
 </div>
 
 <div id="modalRoot"></div>

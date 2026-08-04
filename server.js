@@ -11,8 +11,10 @@ const GRID_SIZE = 48;
 const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sans caractères ambigus (0,O,1,I)
 const ROOM_TTL_MS = 1000 * 60 * 60 * 4; // 4h d'inactivité -> nettoyage
 const GRID_MODES = ["normal", "mega"];
-const GAME_MODES = ["quiestce", "demicercle"];
+const GAME_MODES = ["quiestce", "demicercle", "devinmon"];
 const DEMI_CERCLE_ROUNDS = 10;
+const DEVINMON_MIN_PLAYERS = 2;
+const DEVINMON_MAX_PLAYERS = 6;
 
 // Zones de score du mode Demi-Cercle : distance max (sur une échelle 0-100)
 // pour obtenir 4, 3 ou 2 points ; au-delà -> 0 point.
@@ -90,16 +92,27 @@ function randomStartingPlayer() {
   return Math.random() < 0.5 ? 1 : 2;
 }
 
+// Normalise un nom pour comparer les propositions du mode Devin'Mon
+// (insensible à la casse, aux accents et à la ponctuation/espaces).
+function normalizeName(s) {
+  return (s || "")
+    .toString()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
 // ---------- État des rooms en mémoire ----------
 // rooms: Map<code, room>
 // room = {
-//   code, mode:'quiestce'|'demicercle', generations:[1], gridMode:'normal'|'mega', status:'lobby'|'picking'|'playing'|'victory'|'demicercle'|'demicercle_over',
-//   players: { 1:{socketId,name,connected,secret,replayReady}, 2:{...} },
+//   code, mode:'quiestce'|'demicercle'|'devinmon', generations:[1], gridMode:'normal'|'mega',
+//   maxPlayers: 2..6, status:'lobby'|'picking'|'playing'|'victory'|'demicercle'|'demicercle_over'|'devinmon'|'devinmon_over',
+//   players: { 1:{socketId,name,connected,secret,replayReady}, 2:{...}, ... jusqu'à maxPlayers },
 //   gamePokemons: [{id,name}], currentPlayer:1, guessMode:false,
 //   winner:null, secretFound:null,
-//   demiCercle: { round, totalRounds, guesser, master, pokemon, masterPosition, guesserPosition,
-//                 phase:'master_placing'|'guessing'|'revealed', scores:{1,2}, continueReady:{1,2},
-//                 usedIds:[], lastRoundScore } | null,
+//   demiCercle: {...} | null,
+//   devinmon: {...} | null,
 //   lastActivity: Date.now()
 // }
 const rooms = new Map();
@@ -107,10 +120,12 @@ const socketToRoom = new Map(); // socketId -> {code, playerNum}
 
 function publicPlayers(room) {
   const out = {};
-  [1, 2].forEach((n) => {
+  for (let n = 1; n <= room.maxPlayers; n++) {
     const p = room.players[n];
-    out[n] = p ? { name: p.name, connected: p.connected, hasPicked: !!p.secret, replayReady: !!p.replayReady } : null;
-  });
+    out[n] = p
+      ? { name: p.name, connected: p.connected, hasPicked: !!p.secret, replayReady: !!p.replayReady }
+      : null;
+  }
   return out;
 }
 
@@ -121,12 +136,31 @@ function roomSummary(room) {
     status: room.status,
     generations: room.generations,
     gridMode: room.gridMode,
+    maxPlayers: room.maxPlayers,
     players: publicPlayers(room),
   };
 }
 
 function otherPlayerNum(n) {
   return n === 1 ? 2 : 1;
+}
+
+// Retourne la liste des numéros de joueur ayant un slot occupé (connecté ou non).
+function occupiedPlayerNums(room) {
+  const out = [];
+  for (let n = 1; n <= room.maxPlayers; n++) {
+    if (room.players[n]) out.push(n);
+  }
+  return out;
+}
+
+// Retourne la liste des numéros de joueur actuellement connectés.
+function connectedPlayerNums(room) {
+  const out = [];
+  for (let n = 1; n <= room.maxPlayers; n++) {
+    if (room.players[n] && room.players[n].connected) out.push(n);
+  }
+  return out;
 }
 
 function touch(room) {
@@ -208,18 +242,120 @@ function emitDemiCercleRoundToRoom(room) {
   });
 }
 
+// ---------- Fonctions Mode Devin'Mon ----------
+
+// Construit l'ordre des Guides : chaque joueur guide exactement 2 fois,
+// en évitant autant que possible deux tours consécutifs pour le même joueur.
+function buildDevinmonGuideOrder(playerNums) {
+  const pool = [];
+  playerNums.forEach((n) => {
+    pool.push(n);
+    pool.push(n);
+  });
+  let order = shuffle(pool);
+  let attempts = 0;
+  function hasConsecutiveDuplicate(arr) {
+    for (let i = 1; i < arr.length; i++) {
+      if (arr[i] === arr[i - 1]) return true;
+    }
+    return false;
+  }
+  while (attempts < 200 && hasConsecutiveDuplicate(order) && playerNums.length > 1) {
+    order = shuffle(pool);
+    attempts++;
+  }
+  return order;
+}
+
+function startDevinmonRound(room) {
+  const dc = room.devinmon;
+  dc.round += 1;
+  dc.currentGuide = dc.guideOrder[dc.round - 1];
+
+  const pool = buildPool(room.generations).filter((p) => dc.usedIds.indexOf(p.id) === -1);
+  const source = pool.length ? pool : buildPool(room.generations);
+  const poke = shuffle(source)[0];
+  dc.usedIds.push(poke.id);
+  dc.secret = poke;
+  dc.clues = [];
+  dc.guessLog = [];
+  dc.statuses = {};
+  dc.roundPoints = {};
+  dc.participants.forEach((n) => {
+    dc.statuses[n] = n === dc.currentGuide ? "guiding" : "guessing";
+  });
+  dc.continueReady = {};
+  dc.roundOver = false;
+}
+
+function devinmonPayloadFor(room, playerNum) {
+  const dc = room.devinmon;
+  const isGuide = dc.currentGuide === playerNum;
+  return {
+    round: dc.round,
+    totalRounds: dc.totalRounds,
+    currentGuide: dc.currentGuide,
+    isGuide: isGuide,
+    secret: isGuide || dc.roundOver ? dc.secret : null,
+    clues: dc.clues,
+    statuses: dc.statuses,
+    guessLog: dc.guessLog,
+    totals: dc.totals,
+    roundPoints: dc.roundOver ? dc.roundPoints : null,
+    roundOver: dc.roundOver,
+    myStatus: dc.statuses[playerNum] || null,
+  };
+}
+
+function emitDevinmonStateToRoom(room) {
+  const dc = room.devinmon;
+  dc.participants.forEach((n) => {
+    const p = room.players[n];
+    if (p && p.socketId) {
+      io.to(p.socketId).emit("devinmon_state", devinmonPayloadFor(room, n));
+    }
+  });
+}
+
+// Vérifie si la manche est terminée (tous les Devineurs ont trouvé ou abandonné)
+// et attribue le malus final aux joueurs ayant abandonné le cas échéant.
+function checkDevinmonRoundEnd(room) {
+  const dc = room.devinmon;
+  const allResolved = dc.participants.every((n) => {
+    if (n === dc.currentGuide) return true;
+    return dc.statuses[n] === "found" || dc.statuses[n] === "abandoned";
+  });
+  if (!allResolved) return;
+
+  dc.participants.forEach((n) => {
+    if (n === dc.currentGuide) return;
+    if (dc.statuses[n] === "abandoned" && dc.roundPoints[n] === undefined) {
+      const pts = Math.max(1, dc.clues.length);
+      dc.roundPoints[n] = pts;
+      dc.totals[n] = (dc.totals[n] || 0) + pts;
+    }
+  });
+  dc.roundOver = true;
+}
+
 io.on("connection", (socket) => {
-  socket.on("create_room", ({ name, mode }) => {
+  socket.on("create_room", ({ name, mode, maxPlayers }) => {
     const code = makeRoomCode();
+    const cleanMode = GAME_MODES.indexOf(mode) !== -1 ? mode : "quiestce";
+    let cap = 2;
+    if (cleanMode === "devinmon") {
+      cap = Math.round(Number(maxPlayers)) || 2;
+      cap = Math.max(DEVINMON_MIN_PLAYERS, Math.min(DEVINMON_MAX_PLAYERS, cap));
+    }
     const room = {
       code,
-      mode: GAME_MODES.indexOf(mode) !== -1 ? mode : "quiestce",
+      mode: cleanMode,
       generations: [1],
       gridMode: "normal",
+      maxPlayers: cap,
       status: "lobby",
       players: {
         1: { socketId: socket.id, name: (name || "Joueur 1").slice(0, 16), connected: true, secret: null, replayReady: false },
-        2: null,
       },
       gamePokemons: [],
       currentPlayer: 1,
@@ -227,8 +363,10 @@ io.on("connection", (socket) => {
       winner: null,
       secretFound: null,
       demiCercle: null,
+      devinmon: null,
       lastActivity: Date.now(),
     };
+    for (let n = 2; n <= cap; n++) room.players[n] = null;
     rooms.set(code, room);
     socket.join(code);
     socketToRoom.set(socket.id, { code, playerNum: 1 });
@@ -243,15 +381,19 @@ io.on("connection", (socket) => {
       return;
     }
     let playerNum = null;
-    if (room.players[2] && room.players[2].connected === false && room.players[2].socketId === null) {
-      playerNum = 2;
-    } else if (!room.players[2]) {
-      playerNum = 2;
-    } else if (room.players[1] && !room.players[1].connected) {
-      playerNum = 1;
-    } else {
-      socket.emit("error_message", { message: "Ce lobby est déjà complet." });
-      return;
+    for (let n = 2; n <= room.maxPlayers; n++) {
+      if (!room.players[n] || room.players[n].connected === false) {
+        playerNum = n;
+        break;
+      }
+    }
+    if (playerNum === null) {
+      if (room.players[1] && !room.players[1].connected) {
+        playerNum = 1;
+      } else {
+        socket.emit("error_message", { message: "Ce lobby est déjà complet." });
+        return;
+      }
     }
 
     room.players[playerNum] = {
@@ -269,8 +411,15 @@ io.on("connection", (socket) => {
     io.to(code).emit("players_update", roomSummary(room));
 
     // Si une partie était déjà en cours et qu'un joueur revient, on le remet à niveau
-    if (room.status === "picking" || room.status === "playing" || room.status === "victory" ||
-        room.status === "demicercle" || room.status === "demicercle_over") {
+    if (
+      room.status === "picking" ||
+      room.status === "playing" ||
+      room.status === "victory" ||
+      room.status === "demicercle" ||
+      room.status === "demicercle_over" ||
+      room.status === "devinmon" ||
+      room.status === "devinmon_over"
+    ) {
       socket.emit("resync", buildResyncPayload(room, playerNum));
     }
   });
@@ -302,6 +451,48 @@ io.on("connection", (socket) => {
     const room = rooms.get(code);
     const info = socketToRoom.get(socket.id);
     if (!room || !info || info.playerNum !== 1) return;
+
+    const connected = connectedPlayerNums(room);
+    if (connected.length < 2) {
+      socket.emit("error_message", { message: "Il faut au moins deux joueurs pour commencer." });
+      return;
+    }
+
+    // ---- Branche Mode Devin'Mon ----
+    if (room.mode === "devinmon") {
+      const pool = buildPool(room.generations);
+      const totalRounds = connected.length * 2;
+      if (pool.length < totalRounds) {
+        socket.emit("error_message", {
+          message: "Sélectionne plus de générations (au moins " + totalRounds + " Pokémon nécessaires).",
+        });
+        return;
+      }
+      room.status = "devinmon";
+      occupiedPlayerNums(room).forEach((n) => (room.players[n].replayReady = false));
+      room.devinmon = {
+        totalRounds: totalRounds,
+        round: 0,
+        participants: connected.slice(),
+        guideOrder: buildDevinmonGuideOrder(connected),
+        currentGuide: null,
+        secret: null,
+        clues: [],
+        statuses: {},
+        guessLog: [],
+        roundPoints: {},
+        totals: {},
+        continueReady: {},
+        usedIds: [],
+        roundOver: false,
+      };
+      connected.forEach((n) => (room.devinmon.totals[n] = 0));
+      startDevinmonRound(room);
+      touch(room);
+      emitDevinmonStateToRoom(room);
+      return;
+    }
+
     if (!room.players[1] || !room.players[2]) {
       socket.emit("error_message", { message: "Il faut deux joueurs pour commencer." });
       return;
@@ -520,7 +711,91 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Vote de revanche : une fois les deux joueurs prêts, on ne relance pas
+  // ---------- Mode Devin'Mon : le Guide ajoute un indice ----------
+  socket.on("devinmon_submit_clue", ({ code, text }) => {
+    const room = rooms.get(code);
+    const info = socketToRoom.get(socket.id);
+    if (!room || !info || room.status !== "devinmon") return;
+    const dc = room.devinmon;
+    if (!dc || dc.roundOver || dc.currentGuide !== info.playerNum) return;
+    const clean = (text || "").toString().trim().slice(0, 140);
+    if (!clean) return;
+    dc.clues.push(clean);
+    touch(room);
+    emitDevinmonStateToRoom(room);
+  });
+
+  // ---------- Mode Devin'Mon : un Devineur propose une réponse ----------
+  socket.on("devinmon_submit_guess", ({ code, text }) => {
+    const room = rooms.get(code);
+    const info = socketToRoom.get(socket.id);
+    if (!room || !info || room.status !== "devinmon") return;
+    const dc = room.devinmon;
+    if (!dc || dc.roundOver) return;
+    const playerNum = info.playerNum;
+    if (dc.statuses[playerNum] !== "guessing") return;
+    const clean = (text || "").toString().trim();
+    if (!clean || !dc.secret) return;
+
+    const correct = normalizeName(clean) === normalizeName(dc.secret.name);
+    const playerName = room.players[playerNum] ? room.players[playerNum].name : "Joueur";
+
+    if (correct) {
+      dc.statuses[playerNum] = "found";
+      const pts = Math.max(1, dc.clues.length);
+      dc.roundPoints[playerNum] = pts;
+      dc.totals[playerNum] = (dc.totals[playerNum] || 0) + pts;
+      dc.guessLog.push({ playerNum, name: playerName, text: null, correct: true });
+    } else {
+      dc.guessLog.push({ playerNum, name: playerName, text: clean, correct: false });
+    }
+    touch(room);
+    checkDevinmonRoundEnd(room);
+    emitDevinmonStateToRoom(room);
+  });
+
+  // ---------- Mode Devin'Mon : un Devineur abandonne la manche ----------
+  socket.on("devinmon_abandon", ({ code }) => {
+    const room = rooms.get(code);
+    const info = socketToRoom.get(socket.id);
+    if (!room || !info || room.status !== "devinmon") return;
+    const dc = room.devinmon;
+    if (!dc || dc.roundOver) return;
+    const playerNum = info.playerNum;
+    if (dc.statuses[playerNum] !== "guessing") return;
+    dc.statuses[playerNum] = "abandoned";
+    const playerName = room.players[playerNum] ? room.players[playerNum].name : "Joueur";
+    dc.guessLog.push({ playerNum, name: playerName, text: null, correct: false, abandoned: true });
+    touch(room);
+    checkDevinmonRoundEnd(room);
+    emitDevinmonStateToRoom(room);
+  });
+
+  // ---------- Mode Devin'Mon : passage à la manche suivante ----------
+  socket.on("devinmon_continue", ({ code }) => {
+    const room = rooms.get(code);
+    const info = socketToRoom.get(socket.id);
+    if (!room || !info || room.status !== "devinmon") return;
+    const dc = room.devinmon;
+    if (!dc || !dc.roundOver) return;
+    dc.continueReady[info.playerNum] = true;
+    touch(room);
+
+    const allReady = dc.participants.every((n) => dc.continueReady[n]);
+    if (allReady) {
+      if (dc.round >= dc.totalRounds) {
+        room.status = "devinmon_over";
+        io.to(code).emit("devinmon_game_over", { totals: dc.totals, players: publicPlayers(room) });
+      } else {
+        startDevinmonRound(room);
+        emitDevinmonStateToRoom(room);
+      }
+    } else {
+      io.to(code).emit("devinmon_continue_status", { continueReady: dc.continueReady });
+    }
+  });
+
+  // Vote de revanche : une fois tous les joueurs prêts, on ne relance pas
   // directement la partie. On renvoie tout le monde en salle d'attente pour
   // permettre à l'hôte de modifier générations / mode de grille avant de
   // cliquer à nouveau sur "Démarrer la partie".
@@ -528,20 +803,26 @@ io.on("connection", (socket) => {
     const room = rooms.get(code);
     const info = socketToRoom.get(socket.id);
     if (!room || !info) return;
-    if (room.status !== "victory" && room.status !== "demicercle_over") return;
+    if (
+      room.status !== "victory" &&
+      room.status !== "demicercle_over" &&
+      room.status !== "devinmon_over"
+    )
+      return;
     room.players[info.playerNum].replayReady = true;
     touch(room);
     io.to(code).emit("players_update", roomSummary(room));
 
-    const p1 = room.players[1],
-      p2 = room.players[2];
-    if (p1 && p2 && p1.replayReady && p2.replayReady) {
+    const occupied = occupiedPlayerNums(room);
+    const allReady = occupied.every((n) => room.players[n].replayReady);
+    if (allReady) {
       room.gamePokemons = [];
-      room.players[1].secret = null;
-      room.players[2].secret = null;
-      room.players[1].replayReady = false;
-      room.players[2].replayReady = false;
+      occupied.forEach((n) => {
+        room.players[n].secret = null;
+        room.players[n].replayReady = false;
+      });
       room.demiCercle = null;
+      room.devinmon = null;
       room.status = "lobby";
       room.currentPlayer = 1;
       room.guessMode = false;
@@ -568,17 +849,13 @@ io.on("connection", (socket) => {
     touch(room);
     io.to(info.code).emit("players_update", roomSummary(room));
 
-    // Si les deux joueurs sont partis, on supprime la room après un délai
-    const bothGone =
-      (!room.players[1] || !room.players[1].connected) &&
-      (!room.players[2] || !room.players[2].connected);
+    // Si tous les joueurs sont partis, on supprime la room après un délai
+    const bothGone = occupiedPlayerNums(room).every((n) => !room.players[n].connected);
     if (bothGone) {
       setTimeout(() => {
         const r = rooms.get(info.code);
         if (!r) return;
-        const stillGone =
-          (!r.players[1] || !r.players[1].connected) &&
-          (!r.players[2] || !r.players[2].connected);
+        const stillGone = occupiedPlayerNums(r).every((n) => !r.players[n].connected);
         if (stillGone) rooms.delete(info.code);
       }, 1000 * 60 * 10);
     }
@@ -601,6 +878,7 @@ function buildResyncPayload(room, forPlayerNum) {
     mode: room.mode,
     generations: room.generations,
     gridMode: room.gridMode,
+    maxPlayers: room.maxPlayers,
     gamePokemons: room.gamePokemons,
     currentPlayer: room.currentPlayer,
     guessMode: room.guessMode,
@@ -609,9 +887,13 @@ function buildResyncPayload(room, forPlayerNum) {
     winner: room.winner,
     secretFound: room.secretFound,
     demiCercle: null,
+    devinmon: null,
   };
   if (room.mode === "demicercle" && room.demiCercle) {
     payload.demiCercle = demiCerclePayloadFor(room, forPlayerNum);
+  }
+  if (room.mode === "devinmon" && room.devinmon) {
+    payload.devinmon = devinmonPayloadFor(room, forPlayerNum);
   }
   return payload;
 }

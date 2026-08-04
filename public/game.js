@@ -14,6 +14,8 @@
     victory: document.getElementById("screen-victory"),
     demicercle: document.getElementById("screen-demicercle"),
     demicercleVictory: document.getElementById("screen-demicercle-victory"),
+    devinmon: document.getElementById("screen-devinmon"),
+    devinmonVictory: document.getElementById("screen-devinmon-victory"),
   };
   var modalRoot = document.getElementById("modalRoot");
   var connectionBanner = document.getElementById("connectionBanner");
@@ -43,8 +45,10 @@
   var roomCode = null;
   var isHost = false;
   var roomMode = "quiestce";
+  var roomMaxPlayers = 2;
   var roomPlayersCache = null;
   var selectedCreateMode = "quiestce";
+  var selectedDevinmonPlayerCount = 2;
   var availableGenerations = []; // [{id,count}]
   var selectedGenerations = [1];
   var selectedGridMode = "normal";
@@ -69,6 +73,22 @@
     scores: { 1: 0, 2: 0 },
     lastRoundScore: null,
     draggableEnabled: false,
+  };
+
+  // ---------- État local Mode Devin'Mon ----------
+  var dmState = {
+    round: 0,
+    totalRounds: 0,
+    currentGuide: null,
+    isGuide: false,
+    secret: null,
+    clues: [],
+    statuses: {},
+    guessLog: [],
+    totals: {},
+    roundPoints: null,
+    roundOver: false,
+    myStatus: null,
   };
 
   // ---------- Accueil ----------
@@ -107,17 +127,34 @@
     dcState.draggableEnabled = false;
   }
 
+  function resetDmState() {
+    dmState.round = 0;
+    dmState.totalRounds = 0;
+    dmState.currentGuide = null;
+    dmState.isGuide = false;
+    dmState.secret = null;
+    dmState.clues = [];
+    dmState.statuses = {};
+    dmState.guessLog = [];
+    dmState.totals = {};
+    dmState.roundPoints = null;
+    dmState.roundOver = false;
+    dmState.myStatus = null;
+  }
+
   function resetLocalState() {
     myPlayerNum = null;
     roomCode = null;
     isHost = false;
     roomMode = "quiestce";
+    roomMaxPlayers = 2;
     gamePokemons = [];
     localFlipped = {};
     myPickedSecret = null;
     currentPlayer = 1;
     guessMode = false;
     resetDcState();
+    resetDmState();
   }
 
   function resetRoundState() {
@@ -127,6 +164,7 @@
     currentPlayer = 1;
     guessMode = false;
     resetDcState();
+    resetDmState();
   }
 
   // ---------- Sélection du mode de jeu (écran Créer) ----------
@@ -134,6 +172,14 @@
     selectedCreateMode = m;
     document.getElementById("modeCardQuiestce").classList.toggle("checked", m === "quiestce");
     document.getElementById("modeCardDemicercle").classList.toggle("checked", m === "demicercle");
+    document.getElementById("modeCardDevinmon").classList.toggle("checked", m === "devinmon");
+    var picker = document.getElementById("devinmonPlayerCountPicker");
+    if (m === "devinmon") {
+      picker.classList.remove("hidden");
+      buildDevinmonPlayerCountPicker();
+    } else {
+      picker.classList.add("hidden");
+    }
   }
   document.getElementById("modeCardQuiestce").addEventListener("click", function () {
     setCreateMode("quiestce");
@@ -141,12 +187,46 @@
   document.getElementById("modeCardDemicercle").addEventListener("click", function () {
     setCreateMode("demicercle");
   });
+  document.getElementById("modeCardDevinmon").addEventListener("click", function () {
+    setCreateMode("devinmon");
+  });
+
+  function buildDevinmonPlayerCountPicker() {
+    var container = document.getElementById("devinmonPlayerCountOptions");
+    container.innerHTML = "";
+    for (var n = 2; n <= 6; n++) {
+      (function (count) {
+        var label = document.createElement("label");
+        label.className = "grid-mode-option" + (selectedDevinmonPlayerCount === count ? " checked" : "");
+        var input = document.createElement("input");
+        input.type = "radio";
+        input.name = "devinmonPlayerCount";
+        input.value = count;
+        input.checked = selectedDevinmonPlayerCount === count;
+        input.addEventListener("change", function () {
+          if (input.checked) {
+            selectedDevinmonPlayerCount = count;
+            buildDevinmonPlayerCountPicker();
+          }
+        });
+        var span = document.createElement("span");
+        span.innerHTML =
+          '<span class="gm-label">' + count + " joueurs</span>" +
+          '<span class="gm-desc">' + (count * 2) + " manches au total</span>";
+        label.appendChild(input);
+        label.appendChild(span);
+        container.appendChild(label);
+      })(n);
+    }
+  }
 
   // ---------- Création de lobby ----------
   document.getElementById("btnCreateSubmit").addEventListener("click", function () {
     var name = document.getElementById("createName").value.trim();
     if (!name) name = "Joueur 1";
-    socket.emit("create_room", { name: name, mode: selectedCreateMode });
+    var payload = { name: name, mode: selectedCreateMode };
+    if (selectedCreateMode === "devinmon") payload.maxPlayers = selectedDevinmonPlayerCount;
+    socket.emit("create_room", payload);
   });
 
   socket.on("room_created", function (data) {
@@ -154,6 +234,7 @@
     roomCode = data.code;
     isHost = true;
     roomMode = data.room.mode || "quiestce";
+    roomMaxPlayers = data.room.maxPlayers || 2;
     renderWaitingRoom(data.room);
     showOnly("waiting");
     loadGenerationsIfNeeded();
@@ -167,7 +248,7 @@
       document.getElementById("joinError").textContent = "Merci d'entrer un code de lobby.";
       return;
     }
-    if (!name) name = "Joueur 2";
+    if (!name) name = "Joueur";
     socket.emit("join_room", { code: code, name: name });
   });
 
@@ -176,6 +257,7 @@
     roomCode = data.code;
     isHost = data.playerNum === 1;
     roomMode = data.room.mode || "quiestce";
+    roomMaxPlayers = data.room.maxPlayers || 2;
     renderWaitingRoom(data.room);
     showOnly("waiting");
     loadGenerationsIfNeeded();
@@ -294,29 +376,37 @@
     document.getElementById("roomCodeDisplay").textContent = room.code;
     roomCode = room.code;
     roomMode = room.mode || "quiestce";
+    roomMaxPlayers = room.maxPlayers || 2;
     roomPlayersCache = room.players;
     if (room.generations) selectedGenerations = room.generations.slice();
     if (room.gridMode) selectedGridMode = room.gridMode;
 
     var statusEl = document.getElementById("playersStatus");
     statusEl.innerHTML = "";
-    [1, 2].forEach(function (n) {
-      var p = room.players[n];
-      var slot = document.createElement("div");
-      slot.className = "player-slot" + (p && p.connected ? " connected" : "") + (!p ? " empty" : "");
-      slot.innerHTML =
-        '<span class="role pixel">' +
-        (n === 1 ? "HÔTE" : "INVITÉ") +
-        "</span>" +
-        '<div class="pname"><span class="status-dot"></span>' +
-        (p ? p.name : "En attente...") +
-        "</div>";
-      statusEl.appendChild(slot);
-    });
+    var connectedCount = 0;
+    var filledCount = 0;
+    for (var n = 1; n <= roomMaxPlayers; n++) {
+      (function (num) {
+        var p = room.players[num];
+        if (p) filledCount++;
+        if (p && p.connected) connectedCount++;
+        var slot = document.createElement("div");
+        slot.className = "player-slot" + (p && p.connected ? " connected" : "") + (!p ? " empty" : "");
+        slot.innerHTML =
+          '<span class="role pixel">' +
+          (num === 1 ? "HÔTE" : "JOUEUR " + num) +
+          "</span>" +
+          '<div class="pname"><span class="status-dot"></span>' +
+          (p ? p.name : "En attente...") +
+          "</div>";
+        statusEl.appendChild(slot);
+      })(n);
+    }
 
     var hostPicker = document.getElementById("hostGenPicker");
     var hostGridModePicker = document.getElementById("hostGridModePicker");
     var dcHintHost = document.getElementById("dcModeHintHost");
+    var dmHintHost = document.getElementById("dmModeHintHost");
     var guestInfo = document.getElementById("guestGenInfo");
     var startBtn = document.getElementById("btnStartGame");
     var waitMsg = document.getElementById("waitingForHostMsg");
@@ -328,23 +418,37 @@
       if (roomMode === "demicercle") {
         hostGridModePicker.classList.add("hidden");
         dcHintHost.classList.remove("hidden");
+        dmHintHost.classList.add("hidden");
+      } else if (roomMode === "devinmon") {
+        hostGridModePicker.classList.add("hidden");
+        dcHintHost.classList.add("hidden");
+        dmHintHost.classList.remove("hidden");
       } else {
         hostGridModePicker.classList.remove("hidden");
         dcHintHost.classList.add("hidden");
+        dmHintHost.classList.add("hidden");
         buildGridModePicker();
       }
-      var bothHere = room.players[1] && room.players[1].connected && room.players[2] && room.players[2].connected;
+      var canStart = filledCount >= 2 && connectedCount === filledCount;
       startBtn.classList.remove("hidden");
-      startBtn.disabled = !bothHere;
-      startBtn.textContent = roomMode === "demicercle" ? "Démarrer le Demi-Cercle" : "Démarrer la partie";
+      startBtn.disabled = !canStart;
+      startBtn.textContent =
+        roomMode === "demicercle"
+          ? "Démarrer le Demi-Cercle"
+          : roomMode === "devinmon"
+          ? "Démarrer le Devin'Mon"
+          : "Démarrer la partie";
       waitMsg.classList.add("hidden");
     } else {
       hostPicker.classList.add("hidden");
       hostGridModePicker.classList.add("hidden");
       dcHintHost.classList.add("hidden");
+      dmHintHost.classList.add("hidden");
       guestInfo.classList.remove("hidden");
       var gridModeInfo = GRID_MODE_INFO[room.gridMode] || GRID_MODE_INFO.normal;
-      var modeTag = '<span class="tag">' + (roomMode === "demicercle" ? "Mode Demi-Cercle" : "Mode Qui est-ce ?") + "</span><br>";
+      var modeLabel =
+        roomMode === "demicercle" ? "Mode Demi-Cercle" : roomMode === "devinmon" ? "Mode Devin'Mon" : "Mode Qui est-ce ?";
+      var modeTag = '<span class="tag">' + modeLabel + "</span><br>";
       guestInfo.innerHTML =
         modeTag +
         "Générations choisies par l'hôte : " +
@@ -353,7 +457,7 @@
             return '<span class="tag">Gen ' + g + "</span>";
           })
           .join(" ") +
-        (roomMode === "demicercle" ? "" : '<br><span class="tag">' + gridModeInfo.label + "</span>");
+        (roomMode === "quiestce" ? '<br><span class="tag">' + gridModeInfo.label + "</span>" : "");
       startBtn.classList.add("hidden");
       waitMsg.classList.remove("hidden");
     }
@@ -381,6 +485,7 @@
 
   socket.on("players_update", function (room) {
     roomPlayersCache = room.players;
+    roomMaxPlayers = room.maxPlayers || roomMaxPlayers;
     if (screens.waiting.classList.contains("hidden") === false) {
       renderWaitingRoom(room);
     }
@@ -390,6 +495,9 @@
     }
     if (screens.demicercleVictory.classList.contains("hidden") === false) {
       updateDcReplayStatus(room);
+    }
+    if (screens.devinmonVictory.classList.contains("hidden") === false) {
+      updateDmReplayStatus(room);
     }
   });
 
@@ -825,6 +933,25 @@
     }
   }
 
+  function updateDmReplayStatus(room) {
+    var status = document.getElementById("dmReplayStatus");
+    var readyNames = [];
+    var totalOccupied = 0;
+    for (var n = 1; n <= (room.maxPlayers || roomMaxPlayers); n++) {
+      var p = room.players[n];
+      if (!p) continue;
+      totalOccupied++;
+      if (p.replayReady) readyNames.push(p.name);
+    }
+    if (readyNames.length === totalOccupied) {
+      status.textContent = "Tout le monde est prêt, retour à la salle d'attente...";
+    } else if (readyNames.length > 0) {
+      status.textContent = readyNames.join(", ") + " prêt(s). En attente des autres joueurs (" + readyNames.length + "/" + totalOccupied + ")...";
+    } else {
+      status.textContent = "En attente de tous les joueurs...";
+    }
+  }
+
   // =====================================================================
   // ============ MODE DEMI-CERCLE (inspiré de Wavelength) ==============
   // =====================================================================
@@ -1154,9 +1281,241 @@
     socket.emit("replay_vote", { code: roomCode });
   });
 
+  // =====================================================================
+  // ========================= MODE DEVIN'MON ============================
+  // =====================================================================
+
+  function dmPlayerName(playerNum) {
+    var p = roomPlayersCache && roomPlayersCache[playerNum];
+    return p ? p.name : "Joueur " + playerNum;
+  }
+
+  function renderDmScreen() {
+    document.getElementById("dmRoundNum").textContent = dmState.round;
+    document.getElementById("dmTotalRounds").textContent = dmState.totalRounds;
+
+    var roleBadge = document.getElementById("dmRoleBadge");
+    if (dmState.isGuide) {
+      roleBadge.textContent = "Tu es le Guide 🧭";
+      roleBadge.className = "dm-role-badge";
+    } else {
+      roleBadge.textContent = "Devine avant les autres : " + dmPlayerName(dmState.currentGuide) + " est le Guide";
+      roleBadge.className = "dm-role-badge dm-role-guessing";
+    }
+
+    // Tableau des scores cumulés (le plus bas gagne)
+    var scoreboard = document.getElementById("dmScoreboard");
+    scoreboard.innerHTML = "";
+    var nums = Object.keys(dmState.totals).map(Number).sort(function (a, b) {
+      return a - b;
+    });
+    nums.forEach(function (n) {
+      var box = document.createElement("div");
+      var extra = "";
+      if (n === dmState.currentGuide) extra += " dm-score-guide";
+      if (dmState.statuses[n] === "found") extra += " dm-score-found";
+      if (dmState.statuses[n] === "abandoned") extra += " dm-score-abandoned";
+      box.className = "dm-score-box" + extra;
+      box.innerHTML =
+        '<span class="dm-score-name">' + dmPlayerName(n) + (n === myPlayerNum ? " (toi)" : "") + "</span>" +
+        '<span class="dm-score-val">' + (dmState.totals[n] || 0) + "</span>";
+      scoreboard.appendChild(box);
+    });
+
+    // Panneaux Guide / Devineur
+    var guidePanel = document.getElementById("dmGuidePanel");
+    var guesserPanel = document.getElementById("dmGuesserPanel");
+    var foundMsg = document.getElementById("dmFoundMsg");
+    var abandonedMsg = document.getElementById("dmAbandonedMsg");
+    guidePanel.classList.add("hidden");
+    guesserPanel.classList.add("hidden");
+    foundMsg.classList.add("hidden");
+    abandonedMsg.classList.add("hidden");
+
+    if (!dmState.roundOver) {
+      if (dmState.isGuide) {
+        guidePanel.classList.remove("hidden");
+        document.getElementById("dmSecretImg").src = dmState.secret ? spriteUrl(dmState.secret.id) : "";
+        document.getElementById("dmSecretName").textContent = dmState.secret ? dmState.secret.name : "-";
+      } else if (dmState.myStatus === "found") {
+        foundMsg.classList.remove("hidden");
+      } else if (dmState.myStatus === "abandoned") {
+        abandonedMsg.classList.remove("hidden");
+      } else {
+        guesserPanel.classList.remove("hidden");
+        var guessInput = document.getElementById("dmGuessInput");
+        guessInput.disabled = false;
+        document.getElementById("btnDmSubmitGuess").disabled = false;
+        document.getElementById("btnDmAbandon").disabled = false;
+      }
+    }
+
+    // Indices cumulatifs
+    var cluesList = document.getElementById("dmCluesList");
+    var noClueMsg = document.getElementById("dmNoClueMsg");
+    cluesList.innerHTML = "";
+    if (dmState.clues.length === 0) {
+      noClueMsg.classList.remove("hidden");
+    } else {
+      noClueMsg.classList.add("hidden");
+      dmState.clues.forEach(function (clue) {
+        var li = document.createElement("li");
+        li.textContent = clue;
+        cluesList.appendChild(li);
+      });
+    }
+
+    // Feed des propositions en direct
+    var feedList = document.getElementById("dmFeedList");
+    var noFeedMsg = document.getElementById("dmNoFeedMsg");
+    feedList.innerHTML = "";
+    if (dmState.guessLog.length === 0) {
+      noFeedMsg.classList.remove("hidden");
+    } else {
+      noFeedMsg.classList.add("hidden");
+      dmState.guessLog
+        .slice()
+        .reverse()
+        .forEach(function (entry) {
+          var item = document.createElement("div");
+          var extra = entry.correct ? " dm-feed-correct" : entry.abandoned ? " dm-feed-abandoned" : "";
+          item.className = "dm-feed-item" + extra;
+          var nameClass = entry.correct ? "dm-name-found" : entry.abandoned ? "dm-name-abandoned" : "dm-feed-name";
+          var label = entry.correct ? "Victoire !" : entry.abandoned ? "a abandonné la manche" : "&laquo; " + entry.text + " &raquo;";
+          item.innerHTML = '<span class="' + nameClass + '">' + entry.name + "</span><span>" + label + "</span>";
+          feedList.appendChild(item);
+        });
+    }
+
+    // Panneau de révélation en fin de manche
+    var revealPanel = document.getElementById("dmRevealPanel");
+    if (dmState.roundOver) {
+      revealPanel.classList.remove("hidden");
+      document.getElementById("dmRevealImg").src = dmState.secret ? spriteUrl(dmState.secret.id) : "";
+      document.getElementById("dmRevealName").textContent = dmState.secret ? dmState.secret.name : "-";
+      var pointsEl = document.getElementById("dmRoundPoints");
+      pointsEl.innerHTML = "";
+      nums.forEach(function (n) {
+        if (n === dmState.currentGuide) return;
+        var pts = dmState.roundPoints ? dmState.roundPoints[n] : undefined;
+        var box = document.createElement("div");
+        box.className = "dm-round-point-box";
+        box.textContent = dmPlayerName(n) + " : +" + (pts === undefined ? 0 : pts) + (pts === 1 ? " point" : " points");
+        pointsEl.appendChild(box);
+      });
+      document.getElementById("dmWaitMsg").classList.add("hidden");
+      document.getElementById("btnDmContinue").classList.remove("hidden");
+      document.getElementById("btnDmContinue").disabled = false;
+    } else {
+      revealPanel.classList.add("hidden");
+    }
+  }
+
+  function applyDmStateData(data) {
+    dmState.round = data.round;
+    dmState.totalRounds = data.totalRounds;
+    dmState.currentGuide = data.currentGuide;
+    dmState.isGuide = data.isGuide;
+    dmState.secret = data.secret;
+    dmState.clues = data.clues || [];
+    dmState.statuses = data.statuses || {};
+    dmState.guessLog = data.guessLog || [];
+    dmState.totals = data.totals || {};
+    dmState.roundPoints = data.roundPoints;
+    dmState.roundOver = !!data.roundOver;
+    dmState.myStatus = data.myStatus;
+    renderDmScreen();
+  }
+
+  socket.on("devinmon_state", function (data) {
+    applyDmStateData(data);
+    showOnly("devinmon");
+  });
+
+  document.getElementById("btnDmSubmitClue").addEventListener("click", function () {
+    var input = document.getElementById("dmClueInput");
+    var text = input.value.trim();
+    if (!text) return;
+    socket.emit("devinmon_submit_clue", { code: roomCode, text: text });
+    input.value = "";
+  });
+  document.getElementById("dmClueInput").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") document.getElementById("btnDmSubmitClue").click();
+  });
+
+  document.getElementById("btnDmSubmitGuess").addEventListener("click", function () {
+    var input = document.getElementById("dmGuessInput");
+    var text = input.value.trim();
+    if (!text) return;
+    socket.emit("devinmon_submit_guess", { code: roomCode, text: text });
+    input.value = "";
+  });
+  document.getElementById("dmGuessInput").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") document.getElementById("btnDmSubmitGuess").click();
+  });
+  document.getElementById("btnDmAbandon").addEventListener("click", function () {
+    socket.emit("devinmon_abandon", { code: roomCode });
+  });
+
+  document.getElementById("btnDmContinue").addEventListener("click", function () {
+    document.getElementById("btnDmContinue").disabled = true;
+    socket.emit("devinmon_continue", { code: roomCode });
+  });
+
+  socket.on("devinmon_continue_status", function (data) {
+    if (!data.continueReady[myPlayerNum]) return;
+    var waitMsg = document.getElementById("dmWaitMsg");
+    waitMsg.classList.remove("hidden");
+    waitMsg.textContent = "En attente que les autres joueurs cliquent sur Manche suivante...";
+    document.getElementById("btnDmContinue").classList.add("hidden");
+  });
+
+  socket.on("devinmon_game_over", function (data) {
+    roomPlayersCache = data.players;
+    var nums = Object.keys(data.totals).map(Number);
+    nums.sort(function (a, b) {
+      return (data.totals[a] || 0) - (data.totals[b] || 0);
+    });
+    var lowestScore = nums.length ? data.totals[nums[0]] : 0;
+    var winners = nums.filter(function (n) {
+      return data.totals[n] === lowestScore;
+    });
+    var title;
+    if (winners.length > 1) {
+      title = "ÉGALITÉ !";
+    } else if (winners[0] === myPlayerNum) {
+      title = "TU AS GAGNÉ !";
+    } else {
+      title = dmPlayerName(winners[0]) + " GAGNE !";
+    }
+    document.getElementById("dmVictoryTitle").textContent = title;
+
+    var scoresEl = document.getElementById("dmFinalScores");
+    scoresEl.innerHTML = "";
+    nums.forEach(function (n, idx) {
+      var row = document.createElement("div");
+      row.className = "dm-final-score-row" + (data.totals[n] === lowestScore ? " dm-final-winner" : "");
+      row.innerHTML =
+        '<span class="dm-final-rank">#' + (idx + 1) + "</span>" +
+        '<span class="dm-final-name">' + dmPlayerName(n) + (n === myPlayerNum ? " (toi)" : "") + "</span>" +
+        '<span class="dm-final-total">' + (data.totals[n] || 0) + "</span>";
+      scoresEl.appendChild(row);
+    });
+
+    document.getElementById("btnDmReplay").disabled = false;
+    document.getElementById("dmReplayStatus").textContent = "En attente de tous les joueurs...";
+    showOnly("devinmonVictory");
+  });
+
+  document.getElementById("btnDmReplay").addEventListener("click", function () {
+    document.getElementById("btnDmReplay").disabled = true;
+    socket.emit("replay_vote", { code: roomCode });
+  });
+
   // ---------- Reconnexion / resynchronisation ----------
   socket.on("resync", function (data) {
     roomMode = data.mode || "quiestce";
+    roomMaxPlayers = data.maxPlayers || roomMaxPlayers;
     selectedGenerations = data.generations.slice();
     if (data.gridMode) selectedGridMode = data.gridMode;
     gamePokemons = data.gamePokemons || [];
@@ -1195,6 +1554,28 @@
         '<div class="dc-final-score-box"><span>' + p1Name + "</span><strong>" + (dc.scores[1] || 0) + "</strong></div>" +
         '<div class="dc-final-score-box"><span>' + p2Name + "</span><strong>" + (dc.scores[2] || 0) + "</strong></div>";
       showOnly("demicercleVictory");
+    } else if (data.status === "devinmon" && data.devinmon) {
+      applyDmStateData(data.devinmon);
+      showOnly("devinmon");
+    } else if (data.status === "devinmon_over") {
+      var dm = data.devinmon || { totals: {} };
+      var nums = Object.keys(dm.totals).map(Number).sort(function (a, b) {
+        return (dm.totals[a] || 0) - (dm.totals[b] || 0);
+      });
+      document.getElementById("dmVictoryTitle").textContent = "FIN DE LA PARTIE";
+      var scoresEl = document.getElementById("dmFinalScores");
+      scoresEl.innerHTML = "";
+      var lowest = nums.length ? dm.totals[nums[0]] : 0;
+      nums.forEach(function (n, idx) {
+        var row = document.createElement("div");
+        row.className = "dm-final-score-row" + (dm.totals[n] === lowest ? " dm-final-winner" : "");
+        row.innerHTML =
+          '<span class="dm-final-rank">#' + (idx + 1) + "</span>" +
+          '<span class="dm-final-name">' + dmPlayerName(n) + (n === myPlayerNum ? " (toi)" : "") + "</span>" +
+          '<span class="dm-final-total">' + (dm.totals[n] || 0) + "</span>";
+        scoresEl.appendChild(row);
+      });
+      showOnly("devinmonVictory");
     }
   });
 
