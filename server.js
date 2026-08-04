@@ -281,16 +281,31 @@ function startDevinmonRound(room) {
   dc.guessLog = [];
   dc.statuses = {};
   dc.roundPoints = {};
+  dc.currentTour = 1;
+  dc.lastGuessTour = {};
   dc.participants.forEach((n) => {
     dc.statuses[n] = n === dc.currentGuide ? "guiding" : "guessing";
+    dc.lastGuessTour[n] = 0;
   });
   dc.continueReady = {};
   dc.roundOver = false;
 }
 
+// Retourne les numéros de joueurs encore en train de deviner qui n'ont pas
+// encore proposé de Pokémon pour le tour d'indice en cours.
+function devinmonPendingGuessers(room) {
+  const dc = room.devinmon;
+  return dc.participants.filter(
+    (n) => dc.statuses[n] === "guessing" && dc.lastGuessTour[n] !== dc.currentTour
+  );
+}
+
 function devinmonPayloadFor(room, playerNum) {
   const dc = room.devinmon;
   const isGuide = dc.currentGuide === playerNum;
+  const pendingGuessers = devinmonPendingGuessers(room).map((n) =>
+    room.players[n] ? room.players[n].name : "Joueur " + n
+  );
   return {
     round: dc.round,
     totalRounds: dc.totalRounds,
@@ -304,6 +319,10 @@ function devinmonPayloadFor(room, playerNum) {
     roundPoints: dc.roundOver ? dc.roundPoints : null,
     roundOver: dc.roundOver,
     myStatus: dc.statuses[playerNum] || null,
+    currentTour: dc.currentTour,
+    canSubmitClue: !dc.roundOver && isGuide && pendingGuessers.length === 0,
+    pendingGuessers: pendingGuessers,
+    myHasGuessedThisTour: dc.lastGuessTour[playerNum] === dc.currentTour,
   };
 }
 
@@ -718,9 +737,11 @@ io.on("connection", (socket) => {
     if (!room || !info || room.status !== "devinmon") return;
     const dc = room.devinmon;
     if (!dc || dc.roundOver || dc.currentGuide !== info.playerNum) return;
+    if (devinmonPendingGuessers(room).length > 0) return; // il manque des propositions pour ce tour
     const clean = (text || "").toString().trim().slice(0, 140);
     if (!clean) return;
     dc.clues.push(clean);
+    dc.currentTour += 1; // ouvre un nouveau tour de propositions
     touch(room);
     emitDevinmonStateToRoom(room);
   });
@@ -734,8 +755,12 @@ io.on("connection", (socket) => {
     if (!dc || dc.roundOver) return;
     const playerNum = info.playerNum;
     if (dc.statuses[playerNum] !== "guessing") return;
+    if (dc.lastGuessTour[playerNum] === dc.currentTour) return; // déjà proposé pour ce tour
     const clean = (text || "").toString().trim();
     if (!clean || !dc.secret) return;
+
+    const tour = dc.currentTour;
+    dc.lastGuessTour[playerNum] = tour;
 
     const correct = normalizeName(clean) === normalizeName(dc.secret.name);
     const playerName = room.players[playerNum] ? room.players[playerNum].name : "Joueur";
@@ -745,9 +770,9 @@ io.on("connection", (socket) => {
       const pts = Math.max(1, dc.clues.length);
       dc.roundPoints[playerNum] = pts;
       dc.totals[playerNum] = (dc.totals[playerNum] || 0) + pts;
-      dc.guessLog.push({ playerNum, name: playerName, text: null, correct: true });
+      dc.guessLog.push({ playerNum, name: playerName, text: null, correct: true, tour });
     } else {
-      dc.guessLog.push({ playerNum, name: playerName, text: clean, correct: false });
+      dc.guessLog.push({ playerNum, name: playerName, text: clean, correct: false, tour });
     }
     touch(room);
     checkDevinmonRoundEnd(room);
@@ -765,7 +790,7 @@ io.on("connection", (socket) => {
     if (dc.statuses[playerNum] !== "guessing") return;
     dc.statuses[playerNum] = "abandoned";
     const playerName = room.players[playerNum] ? room.players[playerNum].name : "Joueur";
-    dc.guessLog.push({ playerNum, name: playerName, text: null, correct: false, abandoned: true });
+    dc.guessLog.push({ playerNum, name: playerName, text: null, correct: false, abandoned: true, tour: dc.currentTour });
     touch(room);
     checkDevinmonRoundEnd(room);
     emitDevinmonStateToRoom(room);
