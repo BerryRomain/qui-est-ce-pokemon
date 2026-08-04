@@ -262,7 +262,7 @@
   <!-- DEVIN'MON : MANCHE -->
   <div id="screen-devinmon" class="screen hidden">
     <div class="dm-score-explainer">
-      🏌️ But du jeu : comme au golf, marque le <strong>MOINS de points possible</strong> ! Chaque indice donné ajoute
+       But du jeu : marque le <strong>MOINS de points possible</strong> ! Chaque indice donné ajoute
       +1 point à ta manche. Trouve vite, ou abandonne si tu es bloqué (tu prendras le score max de la manche).
     </div>
 
@@ -285,6 +285,7 @@
         <input id="dmClueInput" type="text" maxlength="140" placeholder="Écris un indice...">
         <button class="btn btn-blue" id="btnDmSubmitClue">Ajouter l'indice</button>
       </div>
+      <p class="pick-wait-msg hidden" id="dmGuideWaitMsg">En attente des propositions des devineurs...</p>
     </div>
 
     <div class="dm-guesser-panel hidden" id="dmGuesserPanel">
@@ -293,6 +294,7 @@
         <button class="btn btn-green" id="btnDmSubmitGuess">Proposer</button>
         <button class="btn btn-grey" id="btnDmAbandon">Abandonner</button>
       </div>
+      <p class="pick-wait-msg hidden" id="dmGuesserWaitMsg">En attente du premier indice du Guide...</p>
     </div>
     <div class="dm-found-msg hidden" id="dmFoundMsg">🎉 Victoire ! Tu as trouvé le Pokémon secret.</div>
     <div class="dm-abandoned-msg hidden" id="dmAbandonedMsg">Tu as abandonné cette manche.</div>

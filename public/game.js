@@ -89,6 +89,10 @@
     roundPoints: null,
     roundOver: false,
     myStatus: null,
+    currentTour: 0,
+    canSubmitClue: false,
+    pendingGuessers: [],
+    myHasGuessedThisTour: false,
   };
 
   // ---------- Accueil ----------
@@ -140,6 +144,10 @@
     dmState.roundPoints = null;
     dmState.roundOver = false;
     dmState.myStatus = null;
+    dmState.currentTour = 0;
+    dmState.canSubmitClue = false;
+    dmState.pendingGuessers = [];
+    dmState.myHasGuessedThisTour = false;
   }
 
   function resetLocalState() {
@@ -1332,11 +1340,35 @@
     foundMsg.classList.add("hidden");
     abandonedMsg.classList.add("hidden");
 
+    var guideWaitMsg = document.getElementById("dmGuideWaitMsg");
+    var guesserWaitMsg = document.getElementById("dmGuesserWaitMsg");
+    if (guideWaitMsg) guideWaitMsg.classList.add("hidden");
+    if (guesserWaitMsg) guesserWaitMsg.classList.add("hidden");
+
     if (!dmState.roundOver) {
       if (dmState.isGuide) {
         guidePanel.classList.remove("hidden");
         document.getElementById("dmSecretImg").src = dmState.secret ? spriteUrl(dmState.secret.id) : "";
         document.getElementById("dmSecretName").textContent = dmState.secret ? dmState.secret.name : "-";
+        var clueInput = document.getElementById("dmClueInput");
+        var clueBtn = document.getElementById("btnDmSubmitClue");
+        if (dmState.canSubmitClue) {
+          clueInput.disabled = false;
+          clueBtn.disabled = false;
+          if (guideWaitMsg) guideWaitMsg.classList.add("hidden");
+        } else {
+          clueInput.disabled = true;
+          clueBtn.disabled = true;
+          if (guideWaitMsg) {
+            var names = dmState.pendingGuessers && dmState.pendingGuessers.length
+              ? dmState.pendingGuessers.join(", ")
+              : "";
+            guideWaitMsg.textContent = names
+              ? "En attente de la proposition de : " + names + "..."
+              : "En attente des propositions des devineurs...";
+            guideWaitMsg.classList.remove("hidden");
+          }
+        }
       } else if (dmState.myStatus === "found") {
         foundMsg.classList.remove("hidden");
       } else if (dmState.myStatus === "abandoned") {
@@ -1344,9 +1376,18 @@
       } else {
         guesserPanel.classList.remove("hidden");
         var guessInput = document.getElementById("dmGuessInput");
-        guessInput.disabled = false;
-        document.getElementById("btnDmSubmitGuess").disabled = false;
+        var canGuessNow = dmState.currentTour > 0 && !dmState.myHasGuessedThisTour;
+        guessInput.disabled = !canGuessNow;
+        document.getElementById("btnDmSubmitGuess").disabled = !canGuessNow;
+        // Abandonner reste toujours possible (ce n'est pas une proposition qui spam le Guide).
         document.getElementById("btnDmAbandon").disabled = false;
+        if (!canGuessNow && guesserWaitMsg) {
+          guesserWaitMsg.textContent =
+            dmState.currentTour === 0
+              ? "En attente du premier indice du Guide..."
+              : "Proposition envoyée, en attente du prochain indice...";
+          guesserWaitMsg.classList.remove("hidden");
+        }
       }
     }
 
@@ -1382,7 +1423,13 @@
           item.className = "dm-feed-item" + extra;
           var nameClass = entry.correct ? "dm-name-found" : entry.abandoned ? "dm-name-abandoned" : "dm-feed-name";
           var label = entry.correct ? "Victoire !" : entry.abandoned ? "a abandonné la manche" : "&laquo; " + entry.text + " &raquo;";
-          item.innerHTML = '<span class="' + nameClass + '">' + entry.name + "</span><span>" + label + "</span>";
+          var tourLabel = entry.tour
+            ? '<span class="dm-feed-tour">indice n&deg;' + entry.tour + "</span>"
+            : "";
+          item.innerHTML =
+            '<span class="' + nameClass + '">' + entry.name + "</span>" +
+            tourLabel +
+            "<span>" + label + "</span>";
           feedList.appendChild(item);
         });
     }
@@ -1424,6 +1471,10 @@
     dmState.roundPoints = data.roundPoints;
     dmState.roundOver = !!data.roundOver;
     dmState.myStatus = data.myStatus;
+    dmState.currentTour = data.currentTour || 0;
+    dmState.canSubmitClue = !!data.canSubmitClue;
+    dmState.pendingGuessers = data.pendingGuessers || [];
+    dmState.myHasGuessedThisTour = !!data.myHasGuessedThisTour;
     renderDmScreen();
   }
 
@@ -1433,6 +1484,7 @@
   });
 
   document.getElementById("btnDmSubmitClue").addEventListener("click", function () {
+    if (!dmState.canSubmitClue) return;
     var input = document.getElementById("dmClueInput");
     var text = input.value.trim();
     if (!text) return;
@@ -1444,6 +1496,7 @@
   });
 
   document.getElementById("btnDmSubmitGuess").addEventListener("click", function () {
+    if (dmState.currentTour === 0 || dmState.myHasGuessedThisTour) return;
     var input = document.getElementById("dmGuessInput");
     var text = input.value.trim();
     if (!text) return;

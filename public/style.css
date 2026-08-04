@@ -1199,6 +1199,15 @@ html,body{
   font-size:0.9rem;
 }
 .dm-feed-item .dm-feed-name{ font-weight:800; color:var(--pd-blue-dark); }
+.dm-feed-item .dm-feed-tour{
+  font-size:0.72rem;
+  font-weight:700;
+  color:#8a93a8;
+  background:#e6e9f2;
+  border-radius:6px;
+  padding:1px 6px;
+  white-space:nowrap;
+}
 .dm-feed-item.dm-feed-correct{ background:#e5fbee; }
 .dm-feed-item.dm-feed-correct .dm-feed-name{ color:#1e9e52; }
 .dm-feed-item.dm-feed-abandoned{ background:#fdeceb; }

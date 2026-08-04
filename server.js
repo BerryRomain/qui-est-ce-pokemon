@@ -281,7 +281,9 @@ function startDevinmonRound(room) {
   dc.guessLog = [];
   dc.statuses = {};
   dc.roundPoints = {};
-  dc.currentTour = 1;
+  // currentTour = nombre d'indices donnés jusqu'ici (0 = aucun indice encore,
+  // les devineurs doivent attendre le premier indice du Guide avant de pouvoir jouer).
+  dc.currentTour = 0;
   dc.lastGuessTour = {};
   dc.participants.forEach((n) => {
     dc.statuses[n] = n === dc.currentGuide ? "guiding" : "guessing";
@@ -755,6 +757,7 @@ io.on("connection", (socket) => {
     if (!dc || dc.roundOver) return;
     const playerNum = info.playerNum;
     if (dc.statuses[playerNum] !== "guessing") return;
+    if (dc.currentTour === 0) return; // le Guide n'a encore rien envoyé, on bloque les propositions
     if (dc.lastGuessTour[playerNum] === dc.currentTour) return; // déjà proposé pour ce tour
     const clean = (text || "").toString().trim();
     if (!clean || !dc.secret) return;
