@@ -308,6 +308,10 @@ function devinmonPayloadFor(room, playerNum) {
   const pendingGuessers = devinmonPendingGuessers(room).map((n) =>
     room.players[n] ? room.players[n].name : "Joueur " + n
   );
+  const tourComplete = pendingGuessers.length === 0;
+  const guessLog = isGuide || dc.roundOver || tourComplete
+    ? dc.guessLog
+    : dc.guessLog.filter((entry) => entry.tour < dc.currentTour);
   return {
     round: dc.round,
     totalRounds: dc.totalRounds,
@@ -316,7 +320,8 @@ function devinmonPayloadFor(room, playerNum) {
     secret: isGuide || dc.roundOver ? dc.secret : null,
     clues: dc.clues,
     statuses: dc.statuses,
-    guessLog: dc.guessLog,
+    guessLog: guessLog,
+    guessLogHidden: !isGuide && !dc.roundOver && !tourComplete,
     totals: dc.totals,
     roundPoints: dc.roundOver ? dc.roundPoints : null,
     roundOver: dc.roundOver,

@@ -85,6 +85,7 @@
     clues: [],
     statuses: {},
     guessLog: [],
+    guessLogHidden: false,
     totals: {},
     roundPoints: null,
     roundOver: false,
@@ -1467,6 +1468,7 @@
     dmState.clues = data.clues || [];
     dmState.statuses = data.statuses || {};
     dmState.guessLog = data.guessLog || [];
+    dmState.guessLogHidden = !!data.guessLogHidden;
     dmState.totals = data.totals || {};
     dmState.roundPoints = data.roundPoints;
     dmState.roundOver = !!data.roundOver;
