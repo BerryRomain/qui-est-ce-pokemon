@@ -53,7 +53,9 @@
   var selectedGenerations = [1];
   var selectedGridMode = "normal";
   var gamePokemons = [];
-  var localFlipped = {}; // id -> bool (mémo personnel, pas partagé)
+  var localFlipped = {}; // id -> bool (mémo personnel, mais synchronisé en lecture seule vers l'adversaire)
+  var opponentFlipped = {}; // id -> bool (état de la grille adverse, reçu du serveur, jamais modifiable ici)
+  var opponentPanelOpen = false; // le panneau "Voir la grille adverse" est-il ouvert ?
   var myPickedSecret = null;
   var currentPlayer = 1;
   var guessMode = false;
@@ -159,6 +161,8 @@
     roomMaxPlayers = 2;
     gamePokemons = [];
     localFlipped = {};
+    opponentFlipped = {};
+    opponentPanelOpen = false;
     myPickedSecret = null;
     currentPlayer = 1;
     guessMode = false;
@@ -169,6 +173,8 @@
   function resetRoundState() {
     gamePokemons = [];
     localFlipped = {};
+    opponentFlipped = {};
+    opponentPanelOpen = false;
     myPickedSecret = null;
     currentPlayer = 1;
     guessMode = false;
@@ -522,6 +528,8 @@
   socket.on("game_started", function (data) {
     gamePokemons = data.gamePokemons;
     localFlipped = {};
+    opponentFlipped = {};
+    closeOpponentPanel();
     myPickedSecret = null;
     renderPickScreen();
     showOnly("pick");
@@ -605,6 +613,8 @@
     currentPlayer = data.currentPlayer;
     guessMode = data.guessMode;
     localFlipped = {};
+    opponentFlipped = data.opponentFlipped || {};
+    closeOpponentPanel();
     renderGameScreen();
     showOnly("game");
   });
@@ -840,6 +850,9 @@
     if (guessMode) return; // pas ton tour, on ne peut pas deviner
     localFlipped[poke.id] = !localFlipped[poke.id];
     cardEl.classList.toggle("flipped");
+    // On répercute l'état de la carte au serveur pour que l'adversaire puisse
+    // la voir en direct dans son panneau "Voir la grille adverse" (lecture seule).
+    socket.emit("flip_card", { code: roomCode, pokemonId: poke.id, flipped: !!localFlipped[poke.id] });
   }
 
   document.getElementById("btnGuess").addEventListener("click", function () {
@@ -853,6 +866,62 @@
     if (currentPlayer !== myPlayerNum) return;
     socket.emit("pass_turn", { code: roomCode });
   });
+
+  // ---------- Mode spectateur : voir la grille adverse (lecture seule) ----------
+  // Le serveur nous transmet en direct chaque case retournée/relevée par
+  // l'adversaire (jamais son secret). On garde cet état à jour en
+  // permanence, qu'on affiche le panneau ou non, pour qu'il soit toujours
+  // à jour dès l'ouverture.
+  socket.on("opponent_flip_update", function (data) {
+    if (data.flipped) opponentFlipped[data.pokemonId] = true;
+    else delete opponentFlipped[data.pokemonId];
+    if (opponentPanelOpen) renderOpponentGrid();
+  });
+
+  function opponentDisplayName() {
+    if (!myPlayerNum) return "l'adversaire";
+    var oppNum = myPlayerNum === 1 ? 2 : 1;
+    var p = roomPlayersCache && roomPlayersCache[oppNum];
+    return p && p.name ? p.name : "l'adversaire";
+  }
+
+  function renderOpponentGrid() {
+    document.getElementById("opponentPanelName").textContent = opponentDisplayName();
+    var grid = document.getElementById("opponentGrid");
+    grid.innerHTML = "";
+    gamePokemons.forEach(function (poke) {
+      var flipped = !!opponentFlipped[poke.id];
+      var card = buildCardMarkup(poke, "readonly-card", !flipped);
+      // Panneau strictement passif : aucun gestionnaire de clic, aucune
+      // interaction possible avec les cartes de l'adversaire.
+      grid.appendChild(card);
+    });
+  }
+
+  function openOpponentPanel() {
+    if (!gamePokemons.length) return;
+    opponentPanelOpen = true;
+    renderOpponentGrid();
+    document.getElementById("opponentPanel").classList.remove("hidden");
+  }
+
+  function closeOpponentPanel() {
+    opponentPanelOpen = false;
+    var panel = document.getElementById("opponentPanel");
+    if (panel) panel.classList.add("hidden");
+  }
+
+  var btnViewOpponent = document.getElementById("btnViewOpponent");
+  if (btnViewOpponent) {
+    btnViewOpponent.addEventListener("click", function () {
+      if (opponentPanelOpen) closeOpponentPanel();
+      else openOpponentPanel();
+    });
+  }
+  var btnCloseOpponentPanel = document.getElementById("btnCloseOpponentPanel");
+  if (btnCloseOpponentPanel) {
+    btnCloseOpponentPanel.addEventListener("click", closeOpponentPanel);
+  }
 
   socket.on("turn_update", function (data) {
     currentPlayer = data.currentPlayer;
@@ -890,6 +959,7 @@
 
   // ---------- Victoire (mode Qui est-ce ?) ----------
   socket.on("victory", function (data) {
+    closeOpponentPanel();
     var iWon = data.winner === myPlayerNum;
     document.getElementById("victoryTitle").textContent = iWon
       ? "TU AS GAGNÉ !"
@@ -1577,6 +1647,8 @@
     currentPlayer = data.currentPlayer;
     guessMode = data.guessMode;
     myPickedSecret = data.mySecret || null;
+    opponentFlipped = data.opponentFlipped || {};
+    closeOpponentPanel();
 
     if (data.status === "picking") {
       if (myPickedSecret) {

@@ -565,6 +565,8 @@ io.on("connection", (socket) => {
     room.gamePokemons = grid;
     room.players[1].secret = null;
     room.players[2].secret = null;
+    room.players[1].flipped = {};
+    room.players[2].flipped = {};
     room.players[1].replayReady = false;
     room.players[2].replayReady = false;
     room.status = "picking";
@@ -596,6 +598,30 @@ io.on("connection", (socket) => {
       room.status = "playing";
       room.guessMode = false;
       io.to(code).emit("game_ready", buildGameStatePayload(room));
+    }
+  });
+
+  // ---------- Synchronisation en direct de la grille personnelle ----------
+  // Chaque joueur retourne ses propres cartes en local (mémo perso, ça ne
+  // révèle jamais le secret). On répercute juste l'état "case retournée ou
+  // pas" au socket de l'adversaire pour qu'il puisse le consulter en mode
+  // spectateur strictement passif (lecture seule, aucune action possible).
+  socket.on("flip_card", ({ code, pokemonId, flipped }) => {
+    const room = rooms.get(code);
+    const info = socketToRoom.get(socket.id);
+    if (!room || !info || room.status !== "playing") return;
+    const me = room.players[info.playerNum];
+    if (!me) return;
+    if (!me.flipped) me.flipped = {};
+    if (flipped) me.flipped[pokemonId] = true;
+    else delete me.flipped[pokemonId];
+    touch(room);
+    const opponent = room.players[otherPlayerNum(info.playerNum)];
+    if (opponent && opponent.socketId) {
+      io.to(opponent.socketId).emit("opponent_flip_update", {
+        pokemonId: pokemonId,
+        flipped: !!flipped,
+      });
     }
   });
 
@@ -852,6 +878,7 @@ io.on("connection", (socket) => {
       room.gamePokemons = [];
       occupied.forEach((n) => {
         room.players[n].secret = null;
+        room.players[n].flipped = {};
         room.players[n].replayReady = false;
       });
       room.demiCercle = null;
@@ -901,11 +928,14 @@ function buildGameStatePayload(room) {
     guessMode: room.guessMode,
     players: publicPlayers(room),
     gamePokemons: room.gamePokemons,
+    opponentFlipped: {},
   };
 }
 
 function buildResyncPayload(room, forPlayerNum) {
   const me = room.players[forPlayerNum];
+  const opponent =
+    room.mode === "quiestce" ? room.players[otherPlayerNum(forPlayerNum)] : null;
   const payload = {
     status: room.status,
     mode: room.mode,
@@ -919,6 +949,7 @@ function buildResyncPayload(room, forPlayerNum) {
     mySecret: me ? me.secret : null,
     winner: room.winner,
     secretFound: room.secretFound,
+    opponentFlipped: opponent && opponent.flipped ? opponent.flipped : {},
     demiCercle: null,
     devinmon: null,
   };

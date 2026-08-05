@@ -173,6 +173,21 @@
       <button class="btn btn-yellow" id="btnGuess">Deviner</button>
       <button class="btn btn-grey hidden" id="btnCancelGuess">Annuler</button>
       <button class="btn btn-blue" id="btnPass">Passer le tour</button>
+      <button class="btn btn-purple" id="btnViewOpponent">👁️ Voir la grille adverse</button>
+    </div>
+
+    <!-- Panneau spectateur : grille adverse en lecture seule -->
+    <div id="opponentPanel" class="opponent-panel hidden">
+      <div class="opponent-panel-inner">
+        <div class="opponent-panel-header">
+          <div>
+            <h3 class="pixel opponent-panel-title">Grille de <span id="opponentPanelName">l'adversaire</span></h3>
+            <p class="opponent-panel-sub">Vue en direct — lecture seule, tu ne peux rien modifier ici.</p>
+          </div>
+          <button class="btn btn-grey" id="btnCloseOpponentPanel">Retour à ma grille</button>
+        </div>
+        <div class="grid opponent-readonly-grid" id="opponentGrid"></div>
+      </div>
     </div>
   </div>
 

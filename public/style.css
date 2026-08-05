@@ -306,6 +306,7 @@ html,body{
 .btn-yellow{ background:var(--pd-yellow); color:var(--pd-dark); }
 .btn-green{ background:#27AE60; }
 .btn-grey{ background:#7d7d7d; }
+.btn-purple{ background:#8E44AD; }
 .btn-lg{ font-size:1.2rem; padding:18px 34px; }
 
 /* PICK SCREEN */
@@ -516,6 +517,61 @@ html,body{
   color:#555;
 }
 .not-your-turn-banner.show{ display:block; }
+
+/* PANNEAU SPECTATEUR : GRILLE ADVERSE (LECTURE SEULE) */
+.opponent-panel{
+  position:fixed;
+  inset:0;
+  background:rgba(15,15,25,0.72);
+  z-index:60;
+  display:flex;
+  align-items:flex-start;
+  justify-content:center;
+  padding:24px 14px;
+  overflow-y:auto;
+}
+.opponent-panel-inner{
+  background:var(--pd-cream);
+  border:5px solid var(--pd-dark);
+  border-radius:20px;
+  padding:20px 22px 26px;
+  max-width:900px;
+  width:100%;
+  box-shadow:0 16px 34px rgba(0,0,0,0.45);
+}
+.opponent-panel-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  flex-wrap:wrap;
+  margin-bottom:16px;
+  padding-bottom:14px;
+  border-bottom:3px dashed var(--pd-blue);
+}
+.opponent-panel-title{
+  color:var(--pd-red);
+  font-size:1rem;
+  margin:0 0 4px;
+}
+.opponent-panel-sub{
+  margin:0;
+  font-size:0.8rem;
+  color:#666;
+  font-weight:600;
+}
+.opponent-readonly-grid{
+  background:#eee4f7;
+}
+.card.readonly-card{
+  cursor:not-allowed;
+}
+.card.readonly-card .card-info-btn{
+  display:none;
+}
+.card.readonly-card .card-front:hover{
+  box-shadow:none;
+}
 
 /* MODAL */
 .modal-overlay{
