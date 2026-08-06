@@ -1340,3 +1340,229 @@ html,body{
 @media (max-width:760px){
   .dm-header{ flex-direction:column; align-items:stretch; text-align:center; }
 }
+
+/* ===================================================================== */
+/* ============ MODE DESSINE-MOI UN POKÉMON (Pictionary) =============== */
+/* ===================================================================== */
+
+.pg-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  flex-wrap:wrap;
+  margin-bottom:16px;
+}
+.pg-round-badge{
+  background:var(--pd-blue);
+  color:#fff;
+  border:4px solid var(--pd-dark);
+  border-radius:14px;
+  padding:10px 16px;
+  font-size:0.8rem;
+}
+.pg-role-badge{
+  background:var(--pd-yellow);
+  color:var(--pd-dark);
+  border:4px solid var(--pd-dark);
+  border-radius:14px;
+  padding:10px 16px;
+  font-weight:800;
+  font-size:0.95rem;
+}
+.pg-role-badge.pg-role-watching{ background:#fff; }
+
+.pg-layout{
+  display:grid;
+  grid-template-columns:190px 1fr 260px;
+  gap:16px;
+  align-items:start;
+}
+
+.pg-scoreboard-col h3, .pg-chat-col h3{ margin:0 0 10px; color:var(--pd-blue-dark); }
+.pg-scoreboard{ display:flex; flex-direction:column; gap:8px; }
+.pg-score-box{
+  background:#fff;
+  border:3px solid var(--pd-dark);
+  border-radius:12px;
+  padding:8px 10px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:6px;
+}
+.pg-score-box.pg-score-drawer{ box-shadow:0 0 0 3px var(--pd-yellow) inset; }
+.pg-score-box.pg-score-found .pg-score-name{ color:#1e9e52; }
+.pg-score-name{
+  font-weight:700;
+  font-size:0.82rem;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.pg-score-pencil{ margin-right:4px; }
+.pg-score-val{ font-weight:800; color:var(--pd-red-dark); font-size:0.95rem; white-space:nowrap; }
+
+.pg-canvas-col{ display:flex; flex-direction:column; gap:10px; }
+.pg-canvas-wrap{
+  position:relative;
+  background:#fff;
+  border:5px solid var(--pd-dark);
+  border-radius:16px;
+  overflow:hidden;
+  line-height:0;
+}
+#pgCanvas{
+  width:100%;
+  height:auto;
+  display:block;
+  aspect-ratio:7/5;
+  background:#fff;
+  touch-action:none;
+  cursor:crosshair;
+}
+#pgCanvas.pg-readonly{ cursor:default; }
+.pg-secret-hint{
+  position:absolute;
+  left:10px;
+  bottom:10px;
+  background:rgba(255,255,255,0.95);
+  border:3px solid var(--pd-dark);
+  border-radius:12px;
+  padding:6px 10px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  box-shadow:0 4px 10px rgba(0,0,0,0.25);
+}
+.pg-secret-hint img{ width:44px; height:44px; object-fit:contain; }
+.pg-secret-hint span{ font-weight:800; font-size:0.85rem; color:var(--pd-red-dark); }
+
+.pg-toolbar{
+  background:var(--pd-blue);
+  border:4px solid var(--pd-dark);
+  border-radius:16px;
+  padding:10px 12px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.pg-colors{
+  display:grid;
+  grid-template-columns:repeat(9, 20px);
+  gap:5px;
+}
+.pg-color-swatch{
+  width:20px;
+  height:20px;
+  border-radius:6px;
+  border:2px solid var(--pd-dark);
+  cursor:pointer;
+  padding:0;
+}
+.pg-color-swatch.active{ box-shadow:0 0 0 3px #fff, 0 0 0 5px var(--pd-dark); }
+#pgBrushSize{ width:90px; }
+.pg-tool-btn{
+  background:#fff;
+  border:3px solid var(--pd-dark);
+  border-radius:10px;
+  padding:6px 9px;
+  font-size:1rem;
+  cursor:pointer;
+  line-height:1;
+}
+.pg-tool-btn.active{ background:var(--pd-yellow); }
+.pg-action-btn{
+  background:#fff;
+  border:3px solid var(--pd-dark);
+  border-radius:10px;
+  padding:6px 10px;
+  font-size:0.78rem;
+  font-weight:700;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.pg-action-btn:disabled, .pg-tool-btn:disabled{ opacity:0.4; cursor:not-allowed; }
+
+.pg-chat-col{ display:flex; flex-direction:column; height:100%; }
+.pg-chat-feed{
+  background:#fff;
+  border:3px solid var(--pd-dark);
+  border-radius:14px;
+  padding:10px;
+  height:360px;
+  overflow-y:auto;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.pg-chat-item{
+  font-size:0.82rem;
+  padding:5px 8px;
+  border-radius:8px;
+  background:#f4f6fb;
+  word-break:break-word;
+}
+.pg-chat-item .pg-chat-name{ font-weight:800; color:var(--pd-blue-dark); margin-right:4px; }
+.pg-chat-item.pg-chat-system{
+  background:#fff4d6;
+  font-style:italic;
+  text-align:center;
+  color:#8a6d00;
+}
+.pg-chat-item.pg-chat-found{
+  background:#e5fbee;
+  font-weight:700;
+  color:#1e9e52;
+}
+.pg-chat-input-row{ display:flex; gap:8px; margin-top:8px; }
+.pg-chat-input-row input{
+  flex:1;
+  border:3px solid var(--pd-dark);
+  border-radius:10px;
+  padding:9px 12px;
+  font-family:'Baloo 2', cursive;
+  font-size:0.9rem;
+}
+.pg-chat-input-row input:focus{ border-color:var(--pd-blue); }
+.pg-chat-input-row .btn{ padding:9px 16px; font-size:0.9rem; }
+.pg-found-msg{
+  text-align:center;
+  font-weight:800;
+  color:#1e9e52;
+  background:#e5fbee;
+  border:3px solid #1e9e52;
+  border-radius:10px;
+  padding:6px;
+  margin:8px 0 0;
+}
+
+.pg-reveal-panel{
+  margin-top:18px;
+  text-align:center;
+  background:#fff;
+  border:4px solid var(--pd-dark);
+  border-radius:16px;
+  padding:18px;
+}
+.pg-reveal-secret{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:12px;
+  margin-bottom:10px;
+}
+.pg-reveal-secret img{ width:70px; height:70px; object-fit:contain; }
+.pg-round-points{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:center;
+  gap:8px;
+  margin-bottom:14px;
+}
+
+@media (max-width:900px){
+  .pg-layout{ grid-template-columns:1fr; }
+  .pg-chat-feed{ height:220px; }
+}

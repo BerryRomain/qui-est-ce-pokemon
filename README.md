@@ -78,6 +78,27 @@ même réseau via votre IP locale) pour tester à deux.
    éliminer sur sa propre grille (privé, ça n'affecte pas l'écran de l'autre),
    puis on utilise **Deviner** quand on pense connaître la réponse.
 
+## Mode "Dessine-moi un Pokémon" (type Skribbl.io)
+
+En plus de "Qui est-ce ?", "Demi-Cercle" et "Devin'Mon", l'hôte peut choisir
+le mode **Dessine-moi un Pokémon** à la création du salon :
+
+- De 2 à 6 joueurs. Chaque joueur passe exactement 2 fois en tant que
+  Dessinateur (rotation automatique, sans doublon consécutif si possible).
+- Pas de limite de temps : le Dessinateur voit discrètement l'artwork officiel
+  du Pokémon secret en bas à gauche de son écran (les autres ne le voient pas)
+  et dessine sur un canvas HTML5 partagé en temps réel.
+- Les autres joueurs proposent leurs réponses dans le chat à droite, sans
+  limite de tentatives. La manche se termine quand tout le monde a trouvé.
+- Barre d'outils sous le canvas : palette de couleurs, taille du pinceau,
+  crayon, gomme, seau de remplissage, annuler et tout effacer.
+- Classement en temps réel à gauche (icône crayon sur le Dessinateur).
+  Points : plus on trouve tôt, plus on marque de points (100 / 80 / 65 / 55 /
+  45 / 35 selon l'ordre de découverte, minimum 20) ; le Dessinateur marque
+  +20 points par joueur qui trouve son dessin.
+- Fin de partie : classement final (le score le plus haut gagne), avec le
+  même système de revanche à deux clics que les autres modes.
+
 ## Générations disponibles
 
 Le fichier `data/pokemon_by_gen.json` contient déjà les 9 générations

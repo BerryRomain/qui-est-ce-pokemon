@@ -16,6 +16,8 @@
     demicercleVictory: document.getElementById("screen-demicercle-victory"),
     devinmon: document.getElementById("screen-devinmon"),
     devinmonVictory: document.getElementById("screen-devinmon-victory"),
+    pictionary: document.getElementById("screen-pictionary"),
+    pictionaryVictory: document.getElementById("screen-pictionary-victory"),
   };
   var modalRoot = document.getElementById("modalRoot");
   var connectionBanner = document.getElementById("connectionBanner");
@@ -98,6 +100,36 @@
     myHasGuessedThisTour: false,
   };
 
+  // ---------- État local Mode Dessine-moi un Pokémon ----------
+  var pgState = {
+    round: 0,
+    totalRounds: 0,
+    currentDrawer: null,
+    isDrawer: false,
+    secret: null,
+    actions: [],
+    statuses: {},
+    totals: {},
+    roundPoints: null,
+    roundOver: false,
+    myStatus: null,
+    chat: [],
+    foundCount: 0,
+    guessersCount: 0,
+  };
+  var pgLastRenderedRound = null; // sert à ne redessiner le canevas que sur un changement de manche
+  var pgTool = "pen";
+  var pgColor = "#22221F";
+  var pgBrushSize = 6;
+  var pgDrawing = false;
+  var pgCurrentStroke = null;
+  var pgCanvas = document.getElementById("pgCanvas");
+  var pgCtx = pgCanvas ? pgCanvas.getContext("2d") : null;
+  var PG_COLORS = [
+    "#22221F", "#FFFFFF", "#E3350D", "#FFCB05", "#3B4CCA", "#2ECC71",
+    "#8E44AD", "#FF8C1A", "#7d4b28", "#00b3b3", "#ff7ab6", "#7d7d7d",
+  ];
+
   // ---------- Accueil ----------
   document.getElementById("btnGoCreate").addEventListener("click", function () {
     document.getElementById("createError").textContent = "";
@@ -153,6 +185,27 @@
     dmState.myHasGuessedThisTour = false;
   }
 
+  function resetPgState() {
+    pgState.round = 0;
+    pgState.totalRounds = 0;
+    pgState.currentDrawer = null;
+    pgState.isDrawer = false;
+    pgState.secret = null;
+    pgState.actions = [];
+    pgState.statuses = {};
+    pgState.totals = {};
+    pgState.roundPoints = null;
+    pgState.roundOver = false;
+    pgState.myStatus = null;
+    pgState.chat = [];
+    pgState.foundCount = 0;
+    pgState.guessersCount = 0;
+    pgLastRenderedRound = null;
+    pgCurrentStroke = null;
+    pgDrawing = false;
+    if (pgCtx && pgCanvas) pgCtx.clearRect(0, 0, pgCanvas.width, pgCanvas.height);
+  }
+
   function resetLocalState() {
     myPlayerNum = null;
     roomCode = null;
@@ -168,6 +221,7 @@
     guessMode = false;
     resetDcState();
     resetDmState();
+    resetPgState();
   }
 
   function resetRoundState() {
@@ -180,6 +234,7 @@
     guessMode = false;
     resetDcState();
     resetDmState();
+    resetPgState();
   }
 
   // ---------- Sélection du mode de jeu (écran Créer) ----------
@@ -188,9 +243,15 @@
     document.getElementById("modeCardQuiestce").classList.toggle("checked", m === "quiestce");
     document.getElementById("modeCardDemicercle").classList.toggle("checked", m === "demicercle");
     document.getElementById("modeCardDevinmon").classList.toggle("checked", m === "devinmon");
+    document.getElementById("modeCardPictionary").classList.toggle("checked", m === "pictionary");
     var picker = document.getElementById("devinmonPlayerCountPicker");
-    if (m === "devinmon") {
+    var hint = document.getElementById("playerCountPickerHint");
+    if (m === "devinmon" || m === "pictionary") {
       picker.classList.remove("hidden");
+      hint.textContent =
+        m === "devinmon"
+          ? "De 2 à 6 joueurs. Chacun sera le Guide exactement 2 fois pendant la partie."
+          : "De 2 à 6 joueurs. Chacun sera le Dessinateur exactement 2 fois pendant la partie.";
       buildDevinmonPlayerCountPicker();
     } else {
       picker.classList.add("hidden");
@@ -204,6 +265,9 @@
   });
   document.getElementById("modeCardDevinmon").addEventListener("click", function () {
     setCreateMode("devinmon");
+  });
+  document.getElementById("modeCardPictionary").addEventListener("click", function () {
+    setCreateMode("pictionary");
   });
 
   function buildDevinmonPlayerCountPicker() {
@@ -240,7 +304,9 @@
     var name = document.getElementById("createName").value.trim();
     if (!name) name = "Joueur 1";
     var payload = { name: name, mode: selectedCreateMode };
-    if (selectedCreateMode === "devinmon") payload.maxPlayers = selectedDevinmonPlayerCount;
+    if (selectedCreateMode === "devinmon" || selectedCreateMode === "pictionary") {
+      payload.maxPlayers = selectedDevinmonPlayerCount;
+    }
     socket.emit("create_room", payload);
   });
 
@@ -422,6 +488,7 @@
     var hostGridModePicker = document.getElementById("hostGridModePicker");
     var dcHintHost = document.getElementById("dcModeHintHost");
     var dmHintHost = document.getElementById("dmModeHintHost");
+    var pgHintHost = document.getElementById("pgModeHintHost");
     var guestInfo = document.getElementById("guestGenInfo");
     var startBtn = document.getElementById("btnStartGame");
     var waitMsg = document.getElementById("waitingForHostMsg");
@@ -434,14 +501,22 @@
         hostGridModePicker.classList.add("hidden");
         dcHintHost.classList.remove("hidden");
         dmHintHost.classList.add("hidden");
+        pgHintHost.classList.add("hidden");
       } else if (roomMode === "devinmon") {
         hostGridModePicker.classList.add("hidden");
         dcHintHost.classList.add("hidden");
         dmHintHost.classList.remove("hidden");
+        pgHintHost.classList.add("hidden");
+      } else if (roomMode === "pictionary") {
+        hostGridModePicker.classList.add("hidden");
+        dcHintHost.classList.add("hidden");
+        dmHintHost.classList.add("hidden");
+        pgHintHost.classList.remove("hidden");
       } else {
         hostGridModePicker.classList.remove("hidden");
         dcHintHost.classList.add("hidden");
         dmHintHost.classList.add("hidden");
+        pgHintHost.classList.add("hidden");
         buildGridModePicker();
       }
       var canStart = filledCount >= 2 && connectedCount === filledCount;
@@ -452,6 +527,8 @@
           ? "Démarrer le Demi-Cercle"
           : roomMode === "devinmon"
           ? "Démarrer le Devin'Mon"
+          : roomMode === "pictionary"
+          ? "Démarrer la partie de dessin"
           : "Démarrer la partie";
       waitMsg.classList.add("hidden");
     } else {
@@ -459,10 +536,17 @@
       hostGridModePicker.classList.add("hidden");
       dcHintHost.classList.add("hidden");
       dmHintHost.classList.add("hidden");
+      pgHintHost.classList.add("hidden");
       guestInfo.classList.remove("hidden");
       var gridModeInfo = GRID_MODE_INFO[room.gridMode] || GRID_MODE_INFO.normal;
       var modeLabel =
-        roomMode === "demicercle" ? "Mode Demi-Cercle" : roomMode === "devinmon" ? "Mode Devin'Mon" : "Mode Qui est-ce ?";
+        roomMode === "demicercle"
+          ? "Mode Demi-Cercle"
+          : roomMode === "devinmon"
+          ? "Mode Devin'Mon"
+          : roomMode === "pictionary"
+          ? "Mode Dessine-moi un Pokémon"
+          : "Mode Qui est-ce ?";
       var modeTag = '<span class="tag">' + modeLabel + "</span><br>";
       guestInfo.innerHTML =
         modeTag +
@@ -513,6 +597,9 @@
     }
     if (screens.devinmonVictory.classList.contains("hidden") === false) {
       updateDmReplayStatus(room);
+    }
+    if (screens.pictionaryVictory.classList.contains("hidden") === false) {
+      updateDmReplayStatus(room, "pgReplayStatus");
     }
   });
 
@@ -1012,8 +1099,8 @@
     }
   }
 
-  function updateDmReplayStatus(room) {
-    var status = document.getElementById("dmReplayStatus");
+  function updateDmReplayStatus(room, elId) {
+    var status = document.getElementById(elId || "dmReplayStatus");
     var readyNames = [];
     var totalOccupied = 0;
     for (var n = 1; n <= (room.maxPlayers || roomMaxPlayers); n++) {
@@ -1637,6 +1724,475 @@
     socket.emit("replay_vote", { code: roomCode });
   });
 
+  // =====================================================================
+  // ======== MODE DESSINE-MOI UN POKÉMON (Pictionary) — CLIENT ==========
+  // =====================================================================
+
+  function pgPlayerName(playerNum) {
+    var p = roomPlayersCache && roomPlayersCache[playerNum];
+    return p ? p.name : "Joueur " + playerNum;
+  }
+
+  // ---------- Palette de couleurs ----------
+  (function buildPgColorPalette() {
+    var container = document.getElementById("pgColors");
+    if (!container) return;
+    PG_COLORS.forEach(function (hex) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "pg-color-swatch" + (hex === pgColor ? " active" : "");
+      btn.style.background = hex;
+      btn.addEventListener("click", function () {
+        pgColor = hex;
+        pgTool = pgTool === "eraser" ? "pen" : pgTool;
+        pgSetActiveTool(pgTool);
+        container.querySelectorAll(".pg-color-swatch").forEach(function (el) {
+          el.classList.remove("active");
+        });
+        btn.classList.add("active");
+      });
+      container.appendChild(btn);
+    });
+  })();
+
+  function pgSetActiveTool(tool) {
+    pgTool = tool;
+    document.getElementById("pgToolPen").classList.toggle("active", tool === "pen");
+    document.getElementById("pgToolFill").classList.toggle("active", tool === "fill");
+    document.getElementById("pgToolEraser").classList.toggle("active", tool === "eraser");
+  }
+
+  var btnPgToolPen = document.getElementById("pgToolPen");
+  var btnPgToolFill = document.getElementById("pgToolFill");
+  var btnPgToolEraser = document.getElementById("pgToolEraser");
+  if (btnPgToolPen) btnPgToolPen.addEventListener("click", function () { pgSetActiveTool("pen"); });
+  if (btnPgToolFill) btnPgToolFill.addEventListener("click", function () { pgSetActiveTool("fill"); });
+  if (btnPgToolEraser) btnPgToolEraser.addEventListener("click", function () { pgSetActiveTool("eraser"); });
+
+  var pgBrushRange = document.getElementById("pgBrushSize");
+  if (pgBrushRange) {
+    pgBrushRange.addEventListener("input", function () {
+      pgBrushSize = Number(pgBrushRange.value) || 6;
+    });
+  }
+
+  // ---------- Dessin sur le canevas ----------
+  function pgCanvasCoords(evt) {
+    var rect = pgCanvas.getBoundingClientRect();
+    var clientX = evt.touches && evt.touches.length ? evt.touches[0].clientX : evt.clientX;
+    var clientY = evt.touches && evt.touches.length ? evt.touches[0].clientY : evt.clientY;
+    var scaleX = pgCanvas.width / rect.width;
+    var scaleY = pgCanvas.height / rect.height;
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY,
+    };
+  }
+
+  function pgCanDraw() {
+    return pgState.isDrawer && !pgState.roundOver && !screens.pictionary.classList.contains("hidden");
+  }
+
+  function pgDrawSegment(ctx, from, to, color, size) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = size;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    if (from) {
+      ctx.moveTo(from[0], from[1]);
+      ctx.lineTo(to[0], to[1]);
+    } else {
+      ctx.moveTo(to[0], to[1]);
+      ctx.lineTo(to[0] + 0.01, to[1] + 0.01);
+    }
+    ctx.stroke();
+  }
+
+  function pgDrawStrokeAction(ctx, action) {
+    var pts = action.points;
+    if (!pts || !pts.length) return;
+    for (var i = 0; i < pts.length; i++) {
+      pgDrawSegment(ctx, i > 0 ? pts[i - 1] : null, pts[i], action.color, action.size);
+    }
+  }
+
+  // ---------- Seau de remplissage (flood fill par pile, comparaison avec tolérance) ----------
+  function pgHexToRgb(hex) {
+    var h = hex.replace("#", "");
+    if (h.length === 3) {
+      h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    }
+    var num = parseInt(h, 16);
+    return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+  }
+
+  function pgFloodFill(ctx, startX, startY, hexColor) {
+    var w = pgCanvas.width;
+    var h = pgCanvas.height;
+    startX = Math.max(0, Math.min(w - 1, Math.round(startX)));
+    startY = Math.max(0, Math.min(h - 1, Math.round(startY)));
+    var imageData = ctx.getImageData(0, 0, w, h);
+    var data = imageData.data;
+    var targetIdx = (startY * w + startX) * 4;
+    var targetR = data[targetIdx];
+    var targetG = data[targetIdx + 1];
+    var targetB = data[targetIdx + 2];
+    var fillRgb = pgHexToRgb(hexColor);
+    if (
+      Math.abs(targetR - fillRgb[0]) < 20 &&
+      Math.abs(targetG - fillRgb[1]) < 20 &&
+      Math.abs(targetB - fillRgb[2]) < 20
+    ) {
+      return; // déjà (à peu près) de cette couleur
+    }
+    var tolerance = 40;
+    function matches(idx) {
+      var dr = data[idx] - targetR;
+      var dg = data[idx + 1] - targetG;
+      var db = data[idx + 2] - targetB;
+      return Math.sqrt(dr * dr + dg * dg + db * db) <= tolerance;
+    }
+    var stack = [[startX, startY]];
+    var visited = new Uint8Array(w * h);
+    while (stack.length) {
+      var pt = stack.pop();
+      var x = pt[0], y = pt[1];
+      if (x < 0 || x >= w || y < 0 || y >= h) continue;
+      var vIdx = y * w + x;
+      if (visited[vIdx]) continue;
+      var idx = vIdx * 4;
+      if (!matches(idx)) continue;
+      visited[vIdx] = 1;
+      data[idx] = fillRgb[0];
+      data[idx + 1] = fillRgb[1];
+      data[idx + 2] = fillRgb[2];
+      data[idx + 3] = 255;
+      stack.push([x + 1, y]);
+      stack.push([x - 1, y]);
+      stack.push([x, y + 1]);
+      stack.push([x, y - 1]);
+    }
+    ctx.putImageData(imageData, 0, 0);
+  }
+
+  // ---------- Reconstruction complète du canevas à partir des actions ----------
+  function pgFullRedraw(actions) {
+    if (!pgCtx || !pgCanvas) return;
+    pgCtx.clearRect(0, 0, pgCanvas.width, pgCanvas.height);
+    pgCtx.fillStyle = "#ffffff";
+    pgCtx.fillRect(0, 0, pgCanvas.width, pgCanvas.height);
+    (actions || []).forEach(function (action) {
+      if (action.type === "stroke") {
+        pgDrawStrokeAction(pgCtx, action);
+      } else if (action.type === "fill") {
+        pgFloodFill(pgCtx, action.x, action.y, action.color);
+      }
+    });
+  }
+
+  // ---------- Interactions souris / tactile sur le canevas ----------
+  function pgPointerDown(evt) {
+    if (!pgCanDraw()) return;
+    evt.preventDefault();
+    var pos = pgCanvasCoords(evt);
+    if (pgTool === "fill") {
+      pgFloodFill(pgCtx, pos.x, pos.y, pgColor);
+      pgState.actions.push({ type: "fill", x: pos.x, y: pos.y, color: pgColor });
+      socket.emit("pictionary_fill", { code: roomCode, x: pos.x, y: pos.y, color: pgColor });
+      return;
+    }
+    pgDrawing = true;
+    var color = pgTool === "eraser" ? "#ffffff" : pgColor;
+    var size = pgTool === "eraser" ? Math.max(pgBrushSize, 16) : pgBrushSize;
+    pgCurrentStroke = { type: "stroke", color: color, size: size, points: [[pos.x, pos.y]] };
+    pgDrawSegment(pgCtx, null, [pos.x, pos.y], color, size);
+    socket.emit("pictionary_live_point", {
+      code: roomCode,
+      x: pos.x,
+      y: pos.y,
+      color: color,
+      size: size,
+      newStroke: true,
+    });
+  }
+
+  function pgPointerMove(evt) {
+    if (!pgDrawing || !pgCurrentStroke) return;
+    evt.preventDefault();
+    var pos = pgCanvasCoords(evt);
+    var lastPt = pgCurrentStroke.points[pgCurrentStroke.points.length - 1];
+    pgDrawSegment(pgCtx, lastPt, [pos.x, pos.y], pgCurrentStroke.color, pgCurrentStroke.size);
+    pgCurrentStroke.points.push([pos.x, pos.y]);
+    socket.emit("pictionary_live_point", {
+      code: roomCode,
+      x: pos.x,
+      y: pos.y,
+      color: pgCurrentStroke.color,
+      size: pgCurrentStroke.size,
+      newStroke: false,
+    });
+  }
+
+  function pgPointerUp() {
+    if (!pgDrawing || !pgCurrentStroke) return;
+    pgDrawing = false;
+    pgState.actions.push(pgCurrentStroke);
+    socket.emit("pictionary_stroke_end", { code: roomCode, stroke: pgCurrentStroke });
+    pgCurrentStroke = null;
+  }
+
+  if (pgCanvas) {
+    pgCanvas.addEventListener("mousedown", pgPointerDown);
+    pgCanvas.addEventListener("mousemove", pgPointerMove);
+    window.addEventListener("mouseup", pgPointerUp);
+    pgCanvas.addEventListener("touchstart", pgPointerDown, { passive: false });
+    pgCanvas.addEventListener("touchmove", pgPointerMove, { passive: false });
+    pgCanvas.addEventListener("touchend", pgPointerUp);
+  }
+
+  document.getElementById("pgUndo").addEventListener("click", function () {
+    if (!pgState.isDrawer || pgState.roundOver) return;
+    socket.emit("pictionary_undo", { code: roomCode });
+  });
+  document.getElementById("pgClear").addEventListener("click", function () {
+    if (!pgState.isDrawer || pgState.roundOver) return;
+    socket.emit("pictionary_clear", { code: roomCode });
+  });
+
+  // ---------- Réception des points de tracé en direct (autres joueurs) ----------
+  var pgLiveLastPoint = null;
+  socket.on("pictionary_live_point", function (data) {
+    if (!pgCtx) return;
+    var pt = [data.x, data.y];
+    if (data.newStroke || !pgLiveLastPoint) {
+      pgDrawSegment(pgCtx, null, pt, data.color, data.size);
+    } else {
+      pgDrawSegment(pgCtx, pgLiveLastPoint, pt, data.color, data.size);
+    }
+    pgLiveLastPoint = pt;
+  });
+
+  socket.on("pictionary_fill_apply", function (data) {
+    if (!pgCtx) return;
+    pgFloodFill(pgCtx, data.x, data.y, data.color);
+  });
+
+  socket.on("pictionary_actions_sync", function (data) {
+    pgState.actions = data.actions || [];
+    pgFullRedraw(pgState.actions);
+  });
+
+  // ---------- Rendu de l'écran de manche ----------
+  function renderPgScreen() {
+    document.getElementById("pgRoundNum").textContent = pgState.round;
+    document.getElementById("pgTotalRounds").textContent = pgState.totalRounds;
+
+    var roleBadge = document.getElementById("pgRoleBadge");
+    if (pgState.isDrawer) {
+      roleBadge.textContent = "C'est à toi de dessiner ! 🖌️";
+      roleBadge.className = "pg-role-badge";
+    } else {
+      roleBadge.textContent = pgPlayerName(pgState.currentDrawer) + " est en train de dessiner";
+      roleBadge.className = "pg-role-badge pg-role-watching";
+    }
+
+    // Classement en temps réel (trié par score décroissant)
+    var scoreboard = document.getElementById("pgScoreboard");
+    scoreboard.innerHTML = "";
+    var nums = Object.keys(pgState.totals).map(Number).sort(function (a, b) {
+      return (pgState.totals[b] || 0) - (pgState.totals[a] || 0);
+    });
+    nums.forEach(function (n) {
+      var box = document.createElement("div");
+      var extra = "";
+      if (n === pgState.currentDrawer) extra += " pg-score-drawer";
+      if (pgState.statuses[n] === "found") extra += " pg-score-found";
+      box.className = "pg-score-box" + extra;
+      var pencil = n === pgState.currentDrawer ? '<span class="pg-score-pencil">✏️</span>' : "";
+      box.innerHTML =
+        '<span class="pg-score-name">' + pencil + pgPlayerName(n) + (n === myPlayerNum ? " (toi)" : "") + "</span>" +
+        '<span class="pg-score-val">' + (pgState.totals[n] || 0) + "</span>";
+      scoreboard.appendChild(box);
+    });
+
+    // Indice visuel du Pokémon secret, réservé au Dessinateur
+    var secretHint = document.getElementById("pgSecretHint");
+    if (pgState.isDrawer && pgState.secret) {
+      secretHint.classList.remove("hidden");
+      document.getElementById("pgSecretImg").src = spriteUrl(pgState.secret.id);
+      document.getElementById("pgSecretName").textContent = pgState.secret.name;
+    } else {
+      secretHint.classList.add("hidden");
+    }
+
+    // Verrouillage du canevas et de la barre d'outils pour les non-dessinateurs
+    var toolbar = document.getElementById("pgToolbar");
+    var canDraw = pgState.isDrawer && !pgState.roundOver;
+    pgCanvas.classList.toggle("pg-readonly", !canDraw);
+    toolbar.querySelectorAll("button, input").forEach(function (el) {
+      el.disabled = !canDraw;
+    });
+    var watchingMsg = document.getElementById("pgWatchingMsg");
+    if (!pgState.isDrawer && !pgState.roundOver) {
+      document.getElementById("pgDrawerName").textContent = pgPlayerName(pgState.currentDrawer);
+      watchingMsg.classList.remove("hidden");
+    } else {
+      watchingMsg.classList.add("hidden");
+    }
+
+    // Chat / propositions
+    var feed = document.getElementById("pgChatFeed");
+    feed.innerHTML = "";
+    (pgState.chat || []).forEach(function (entry) {
+      var item = document.createElement("div");
+      if (entry.type === "system") {
+        item.className = "pg-chat-item pg-chat-system";
+        item.textContent = entry.text;
+      } else if (entry.type === "found") {
+        item.className = "pg-chat-item pg-chat-found";
+        item.textContent = "🎉 " + entry.name + " a trouvé le Pokémon !";
+      } else {
+        item.className = "pg-chat-item";
+        item.innerHTML = '<span class="pg-chat-name">' + entry.name + " :</span>" + entry.text;
+      }
+      feed.appendChild(item);
+    });
+    feed.scrollTop = feed.scrollHeight;
+
+    var foundMsg = document.getElementById("pgFoundMsg");
+    foundMsg.classList.toggle("hidden", pgState.myStatus !== "found");
+
+    var chatInput = document.getElementById("pgChatInput");
+    var sendBtn = document.getElementById("btnPgSend");
+    var lockChat = pgState.roundOver || pgState.myStatus === "found";
+    chatInput.disabled = lockChat;
+    sendBtn.disabled = lockChat;
+    chatInput.placeholder =
+      pgState.myStatus === "found" ? "Tu as déjà trouvé !" : pgState.isDrawer ? "Discute avec les autres..." : "Ta proposition...";
+
+    // Panneau de révélation en fin de manche
+    var revealPanel = document.getElementById("pgRevealPanel");
+    if (pgState.roundOver) {
+      revealPanel.classList.remove("hidden");
+      document.getElementById("pgRevealImg").src = pgState.secret ? spriteUrl(pgState.secret.id) : "";
+      document.getElementById("pgRevealName").textContent = pgState.secret ? pgState.secret.name : "-";
+      var pointsEl = document.getElementById("pgRoundPoints");
+      pointsEl.innerHTML = "";
+      nums.forEach(function (n) {
+        var pts = pgState.roundPoints ? pgState.roundPoints[n] : undefined;
+        var box = document.createElement("div");
+        box.className = "dm-round-point-box";
+        box.textContent = pgPlayerName(n) + " : +" + (pts === undefined ? 0 : pts) + (pts === 1 ? " point" : " points");
+        pointsEl.appendChild(box);
+      });
+      document.getElementById("pgWaitMsg").classList.add("hidden");
+      document.getElementById("btnPgContinue").classList.remove("hidden");
+      document.getElementById("btnPgContinue").disabled = false;
+    } else {
+      revealPanel.classList.add("hidden");
+    }
+  }
+
+  function applyPgStateData(data, isFreshRound) {
+    var enteringNewRound = isFreshRound || data.round !== pgState.round;
+    pgState.round = data.round;
+    pgState.totalRounds = data.totalRounds;
+    pgState.currentDrawer = data.currentDrawer;
+    pgState.isDrawer = data.isDrawer;
+    pgState.secret = data.secret;
+    pgState.actions = data.actions || pgState.actions;
+    pgState.statuses = data.statuses || {};
+    pgState.totals = data.totals || {};
+    pgState.roundPoints = data.roundPoints;
+    pgState.roundOver = !!data.roundOver;
+    pgState.myStatus = data.myStatus;
+    pgState.chat = data.chat || [];
+    pgState.foundCount = data.foundCount || 0;
+    pgState.guessersCount = data.guessersCount || 0;
+
+    if (enteringNewRound) {
+      pgLiveLastPoint = null;
+      pgCurrentStroke = null;
+      pgDrawing = false;
+      pgFullRedraw(pgState.actions);
+      pgLastRenderedRound = pgState.round;
+    }
+    renderPgScreen();
+  }
+
+  socket.on("pictionary_state", function (data) {
+    var wasHidden = screens.pictionary.classList.contains("hidden");
+    applyPgStateData(data, wasHidden);
+    showOnly("pictionary");
+  });
+
+  document.getElementById("btnPgSend").addEventListener("click", function () {
+    var input = document.getElementById("pgChatInput");
+    var text = input.value.trim();
+    if (!text || input.disabled) return;
+    socket.emit("pictionary_chat_guess", { code: roomCode, text: text });
+    input.value = "";
+  });
+  document.getElementById("pgChatInput").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") document.getElementById("btnPgSend").click();
+  });
+
+  document.getElementById("btnPgContinue").addEventListener("click", function () {
+    document.getElementById("btnPgContinue").disabled = true;
+    socket.emit("pictionary_continue", { code: roomCode });
+  });
+
+  socket.on("pictionary_continue_status", function (data) {
+    if (!data.continueReady[myPlayerNum]) return;
+    var waitMsg = document.getElementById("pgWaitMsg");
+    waitMsg.classList.remove("hidden");
+    waitMsg.textContent = "En attente que les autres joueurs cliquent sur Manche suivante...";
+    document.getElementById("btnPgContinue").classList.add("hidden");
+  });
+
+  socket.on("pictionary_game_over", function (data) {
+    roomPlayersCache = data.players;
+    var nums = Object.keys(data.totals).map(Number);
+    nums.sort(function (a, b) {
+      return (data.totals[b] || 0) - (data.totals[a] || 0);
+    });
+    var highestScore = nums.length ? data.totals[nums[0]] : 0;
+    var winners = nums.filter(function (n) {
+      return data.totals[n] === highestScore;
+    });
+    var title;
+    if (winners.length > 1) {
+      title = "ÉGALITÉ !";
+    } else if (winners[0] === myPlayerNum) {
+      title = "TU AS GAGNÉ !";
+    } else {
+      title = pgPlayerName(winners[0]) + " GAGNE !";
+    }
+    document.getElementById("pgVictoryTitle").textContent = title;
+
+    var scoresEl = document.getElementById("pgFinalScores");
+    scoresEl.innerHTML = "";
+    nums.forEach(function (n, idx) {
+      var row = document.createElement("div");
+      row.className = "dm-final-score-row" + (data.totals[n] === highestScore ? " dm-final-winner" : "");
+      row.innerHTML =
+        '<span class="dm-final-rank">#' + (idx + 1) + "</span>" +
+        '<span class="dm-final-name">' + pgPlayerName(n) + (n === myPlayerNum ? " (toi)" : "") + "</span>" +
+        '<span class="dm-final-total">' + (data.totals[n] || 0) + "</span>";
+      scoresEl.appendChild(row);
+    });
+
+    document.getElementById("btnPgReplay").disabled = false;
+    document.getElementById("pgReplayStatus").textContent = "En attente de tous les joueurs...";
+    showOnly("pictionaryVictory");
+  });
+
+  document.getElementById("btnPgReplay").addEventListener("click", function () {
+    document.getElementById("btnPgReplay").disabled = true;
+    socket.emit("replay_vote", { code: roomCode });
+  });
+
   // ---------- Reconnexion / resynchronisation ----------
   socket.on("resync", function (data) {
     roomMode = data.mode || "quiestce";
@@ -1703,6 +2259,28 @@
         scoresEl.appendChild(row);
       });
       showOnly("devinmonVictory");
+    } else if (data.status === "pictionary" && data.pictionary) {
+      applyPgStateData(data.pictionary, true);
+      showOnly("pictionary");
+    } else if (data.status === "pictionary_over") {
+      var pg = data.pictionary || { totals: {} };
+      var pgNums = Object.keys(pg.totals).map(Number).sort(function (a, b) {
+        return (pg.totals[b] || 0) - (pg.totals[a] || 0);
+      });
+      document.getElementById("pgVictoryTitle").textContent = "FIN DE LA PARTIE";
+      var pgScoresEl = document.getElementById("pgFinalScores");
+      pgScoresEl.innerHTML = "";
+      var pgHighest = pgNums.length ? pg.totals[pgNums[0]] : 0;
+      pgNums.forEach(function (n, idx) {
+        var row = document.createElement("div");
+        row.className = "dm-final-score-row" + (pg.totals[n] === pgHighest ? " dm-final-winner" : "");
+        row.innerHTML =
+          '<span class="dm-final-rank">#' + (idx + 1) + "</span>" +
+          '<span class="dm-final-name">' + pgPlayerName(n) + (n === myPlayerNum ? " (toi)" : "") + "</span>" +
+          '<span class="dm-final-total">' + (pg.totals[n] || 0) + "</span>";
+        pgScoresEl.appendChild(row);
+      });
+      showOnly("pictionaryVictory");
     }
   });
 

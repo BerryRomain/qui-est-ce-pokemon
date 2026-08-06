@@ -61,11 +61,16 @@
           <h3>Devin'Mon</h3>
           <p>2 à 6 joueurs. Un Guide donne des indices, les autres devinent avec le moins d'indices possible.</p>
         </div>
+        <div class="mode-card" data-mode="pictionary" id="modeCardPictionary">
+          <div class="emoji">🎨</div>
+          <h3>Dessine-moi un Pokémon</h3>
+          <p>2 à 6 joueurs. Un dessinateur, les autres devinent en direct dans le chat.</p>
+        </div>
       </div>
 
       <div id="devinmonPlayerCountPicker" class="grid-mode-picker hidden">
         <h3 class="pixel" style="font-size:0.85rem;">Nombre de joueurs</h3>
-        <p class="gen-hint">De 2 à 6 joueurs. Chacun sera le Guide exactement 2 fois pendant la partie.</p>
+        <p class="gen-hint" id="playerCountPickerHint">De 2 à 6 joueurs. Chacun sera le Guide exactement 2 fois pendant la partie.</p>
         <div class="grid-mode-options" id="devinmonPlayerCountOptions"></div>
       </div>
 
@@ -127,6 +132,7 @@
 
       <p id="dcModeHintHost" class="gen-hint dc-hint hidden">Mode Demi-Cercle : 10 Pokémon aléatoires seront tirés (un par round) parmi les générations choisies.</p>
       <p id="dmModeHintHost" class="gen-hint dc-hint hidden">Mode Devin'Mon : chaque joueur sera le Guide 2 fois. Assure-toi d'avoir sélectionné assez de générations.</p>
+      <p id="pgModeHintHost" class="gen-hint dc-hint hidden">Mode Dessine-moi un Pokémon : chaque joueur sera le Dessinateur 2 fois. Assure-toi d'avoir sélectionné assez de générations.</p>
 
       <div id="guestGenInfo" class="gen-readonly hidden"></div>
 
@@ -350,6 +356,76 @@
       <button class="btn btn-green" id="btnDmReplay">Rejouer (modifier les paramètres)</button>
     </div>
     <div class="replay-status" id="dmReplayStatus">En attente de tous les joueurs...</div>
+  </div>
+
+  <!-- DESSINE-MOI UN POKÉMON : MANCHE -->
+  <div id="screen-pictionary" class="screen hidden">
+    <div class="pg-header">
+      <div class="pg-round-badge pixel">MANCHE <span id="pgRoundNum">1</span>/<span id="pgTotalRounds">6</span></div>
+      <div class="pg-role-badge" id="pgRoleBadge">C'est à toi de dessiner !</div>
+    </div>
+
+    <div class="pg-layout">
+      <div class="pg-scoreboard-col">
+        <h3 class="pixel" style="font-size:0.75rem;">Classement</h3>
+        <div class="pg-scoreboard" id="pgScoreboard"></div>
+      </div>
+
+      <div class="pg-canvas-col">
+        <div class="pg-canvas-wrap">
+          <canvas id="pgCanvas" width="700" height="500"></canvas>
+          <div class="pg-secret-hint hidden" id="pgSecretHint">
+            <img id="pgSecretImg" src="" alt="">
+            <span id="pgSecretName">-</span>
+          </div>
+        </div>
+        <div class="pg-toolbar" id="pgToolbar">
+          <div class="pg-colors" id="pgColors"></div>
+          <input type="range" id="pgBrushSize" min="2" max="28" value="6" title="Taille du pinceau">
+          <button type="button" class="pg-tool-btn active" id="pgToolPen" title="Crayon">✏️</button>
+          <button type="button" class="pg-tool-btn" id="pgToolFill" title="Seau de remplissage">🪣</button>
+          <button type="button" class="pg-tool-btn" id="pgToolEraser" title="Gomme">🧼</button>
+          <button type="button" class="pg-action-btn" id="pgUndo" title="Annuler">↩️ Annuler</button>
+          <button type="button" class="pg-action-btn" id="pgClear" title="Tout effacer">🗑️ Effacer tout</button>
+        </div>
+        <p class="pick-wait-msg hidden" id="pgWatchingMsg">👀 <span id="pgDrawerName">...</span> est en train de dessiner. Devine dans le chat !</p>
+      </div>
+
+      <div class="pg-chat-col">
+        <h3 class="pixel" style="font-size:0.75rem;">Propositions</h3>
+        <div class="pg-chat-feed" id="pgChatFeed"></div>
+        <p class="pg-found-msg hidden" id="pgFoundMsg">🎉 Bravo, tu as trouvé !</p>
+        <div class="pg-chat-input-row">
+          <input id="pgChatInput" type="text" maxlength="60" placeholder="Ta proposition...">
+          <button class="btn btn-green" id="btnPgSend">Envoyer</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="pg-reveal-panel hidden" id="pgRevealPanel">
+      <div class="pg-reveal-secret">
+        <img id="pgRevealImg" src="" alt="">
+        <div>
+          <div style="font-size:0.8rem;color:#555;">Le Pokémon secret était</div>
+          <div id="pgRevealName" style="font-weight:800;font-size:1.2rem;">-</div>
+        </div>
+      </div>
+      <div class="dm-round-points" id="pgRoundPoints"></div>
+      <button class="btn btn-blue btn-lg" id="btnPgContinue">Manche suivante</button>
+      <p class="pick-wait-msg hidden" id="pgWaitMsg">En attente des autres joueurs...</p>
+    </div>
+  </div>
+
+  <!-- DESSINE-MOI UN POKÉMON : FIN DE PARTIE -->
+  <div id="screen-pictionary-victory" class="screen hidden">
+    <div class="trophy">🏆</div>
+    <h2 class="pixel" id="pgVictoryTitle">FIN DE LA PARTIE</h2>
+    <p>Classement final (le score le plus haut gagne) :</p>
+    <div class="dm-final-scores" id="pgFinalScores"></div>
+    <div class="replay-row">
+      <button class="btn btn-green" id="btnPgReplay">Rejouer (modifier les paramètres)</button>
+    </div>
+    <div class="replay-status" id="pgReplayStatus">En attente de tous les joueurs...</div>
   </div>
 
   <div class="footer-note">Sprites officiels via PokeAPI · Jeu multijoueur en ligne, invite tes amis avec un code de lobby.</div>

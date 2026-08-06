@@ -11,10 +11,17 @@ const GRID_SIZE = 48;
 const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sans caractères ambigus (0,O,1,I)
 const ROOM_TTL_MS = 1000 * 60 * 60 * 4; // 4h d'inactivité -> nettoyage
 const GRID_MODES = ["normal", "mega"];
-const GAME_MODES = ["quiestce", "demicercle", "devinmon"];
+const GAME_MODES = ["quiestce", "demicercle", "devinmon", "pictionary"];
 const DEMI_CERCLE_ROUNDS = 10;
 const DEVINMON_MIN_PLAYERS = 2;
 const DEVINMON_MAX_PLAYERS = 6;
+const PICTIONARY_MIN_PLAYERS = 2;
+const PICTIONARY_MAX_PLAYERS = 6;
+// Points attribués selon le rang de découverte (1er à trouver, 2e, etc.)
+const PICTIONARY_RANK_POINTS = [100, 80, 65, 55, 45, 35];
+const PICTIONARY_MIN_POINTS = 20;
+// Points bonus gagnés par le dessinateur pour chaque joueur qui trouve son dessin
+const PICTIONARY_DRAWER_POINTS_PER_FINDER = 20;
 
 // Zones de score du mode Demi-Cercle : distance max (sur une échelle 0-100)
 // pour obtenir 4, 3 ou 2 points ; au-delà -> 0 point.
@@ -113,6 +120,7 @@ function normalizeName(s) {
 //   winner:null, secretFound:null,
 //   demiCercle: {...} | null,
 //   devinmon: {...} | null,
+//   pictionary: {...} | null,
 //   lastActivity: Date.now()
 // }
 const rooms = new Map();
@@ -364,6 +372,87 @@ function checkDevinmonRoundEnd(room) {
   dc.roundOver = true;
 }
 
+// ---------- Fonctions Mode Dessine-moi un Pokémon (Pictionary) ----------
+
+// Construit l'ordre des Dessinateurs : chaque joueur dessine exactement 2
+// fois, en évitant autant que possible deux tours consécutifs pour le même
+// joueur. Réutilise le même principe que le mode Devin'Mon.
+function buildPictionaryDrawOrder(playerNums) {
+  return buildDevinmonGuideOrder(playerNums);
+}
+
+function startPictionaryRound(room) {
+  const pc = room.pictionary;
+  pc.round += 1;
+  pc.currentDrawer = pc.drawOrder[pc.round - 1];
+
+  const pool = buildPool(room.generations).filter((p) => pc.usedIds.indexOf(p.id) === -1);
+  const source = pool.length ? pool : buildPool(room.generations);
+  const poke = shuffle(source)[0];
+  pc.usedIds.push(poke.id);
+  pc.secret = poke;
+  pc.actions = [];
+  pc.foundOrder = [];
+  pc.statuses = {};
+  pc.roundPoints = {};
+  pc.chat = [];
+  pc.participants.forEach((n) => {
+    pc.statuses[n] = n === pc.currentDrawer ? "drawing" : "guessing";
+  });
+  pc.continueReady = {};
+  pc.roundOver = false;
+}
+
+function pictionaryPayloadFor(room, playerNum) {
+  const pc = room.pictionary;
+  const isDrawer = pc.currentDrawer === playerNum;
+  const guessersCount = pc.participants.length - 1;
+  return {
+    round: pc.round,
+    totalRounds: pc.totalRounds,
+    currentDrawer: pc.currentDrawer,
+    isDrawer: isDrawer,
+    secret: isDrawer || pc.roundOver ? pc.secret : null,
+    actions: pc.actions,
+    statuses: pc.statuses,
+    totals: pc.totals,
+    roundPoints: pc.roundOver ? pc.roundPoints : null,
+    roundOver: pc.roundOver,
+    myStatus: pc.statuses[playerNum] || null,
+    chat: pc.chat,
+    foundCount: pc.foundOrder.length,
+    guessersCount: guessersCount,
+  };
+}
+
+function emitPictionaryStateToRoom(room) {
+  const pc = room.pictionary;
+  pc.participants.forEach((n) => {
+    const p = room.players[n];
+    if (p && p.socketId) {
+      io.to(p.socketId).emit("pictionary_state", pictionaryPayloadFor(room, n));
+    }
+  });
+}
+
+// Vérifie si tous les Devineurs ont trouvé le Pokémon secret ; si oui,
+// attribue les points bonus au Dessinateur et clôture la manche.
+function checkPictionaryRoundEnd(room) {
+  const pc = room.pictionary;
+  const guessers = pc.participants.filter((n) => n !== pc.currentDrawer);
+  const allFound = guessers.every((n) => pc.statuses[n] === "found");
+  if (!allFound) return;
+
+  const bonus = guessers.length * PICTIONARY_DRAWER_POINTS_PER_FINDER;
+  pc.roundPoints[pc.currentDrawer] = bonus;
+  pc.totals[pc.currentDrawer] = (pc.totals[pc.currentDrawer] || 0) + bonus;
+  pc.roundOver = true;
+  pc.chat.push({
+    type: "system",
+    text: "Tout le monde a trouvé ! Le Pokémon secret était " + pc.secret.name + ".",
+  });
+}
+
 io.on("connection", (socket) => {
   socket.on("create_room", ({ name, mode, maxPlayers }) => {
     const code = makeRoomCode();
@@ -372,6 +461,9 @@ io.on("connection", (socket) => {
     if (cleanMode === "devinmon") {
       cap = Math.round(Number(maxPlayers)) || 2;
       cap = Math.max(DEVINMON_MIN_PLAYERS, Math.min(DEVINMON_MAX_PLAYERS, cap));
+    } else if (cleanMode === "pictionary") {
+      cap = Math.round(Number(maxPlayers)) || 2;
+      cap = Math.max(PICTIONARY_MIN_PLAYERS, Math.min(PICTIONARY_MAX_PLAYERS, cap));
     }
     const room = {
       code,
@@ -390,6 +482,7 @@ io.on("connection", (socket) => {
       secretFound: null,
       demiCercle: null,
       devinmon: null,
+      pictionary: null,
       lastActivity: Date.now(),
     };
     for (let n = 2; n <= cap; n++) room.players[n] = null;
@@ -444,7 +537,9 @@ io.on("connection", (socket) => {
       room.status === "demicercle" ||
       room.status === "demicercle_over" ||
       room.status === "devinmon" ||
-      room.status === "devinmon_over"
+      room.status === "devinmon_over" ||
+      room.status === "pictionary" ||
+      room.status === "pictionary_over"
     ) {
       socket.emit("resync", buildResyncPayload(room, playerNum));
     }
@@ -516,6 +611,42 @@ io.on("connection", (socket) => {
       startDevinmonRound(room);
       touch(room);
       emitDevinmonStateToRoom(room);
+      return;
+    }
+
+    // ---- Branche Mode Dessine-moi un Pokémon (Pictionary) ----
+    if (room.mode === "pictionary") {
+      const pool = buildPool(room.generations);
+      const totalRounds = connected.length * 2;
+      if (pool.length < totalRounds) {
+        socket.emit("error_message", {
+          message: "Sélectionne plus de générations (au moins " + totalRounds + " Pokémon nécessaires).",
+        });
+        return;
+      }
+      room.status = "pictionary";
+      occupiedPlayerNums(room).forEach((n) => (room.players[n].replayReady = false));
+      room.pictionary = {
+        totalRounds: totalRounds,
+        round: 0,
+        participants: connected.slice(),
+        drawOrder: buildPictionaryDrawOrder(connected),
+        currentDrawer: null,
+        secret: null,
+        actions: [],
+        foundOrder: [],
+        statuses: {},
+        roundPoints: {},
+        totals: {},
+        chat: [],
+        continueReady: {},
+        usedIds: [],
+        roundOver: false,
+      };
+      connected.forEach((n) => (room.pictionary.totals[n] = 0));
+      startPictionaryRound(room);
+      touch(room);
+      emitPictionaryStateToRoom(room);
       return;
     }
 
@@ -854,6 +985,152 @@ io.on("connection", (socket) => {
     }
   });
 
+  // =====================================================================
+  // ============ MODE DESSINE-MOI UN POKÉMON (Pictionary) ==============
+  // =====================================================================
+
+  // ---------- Point de tracé en direct (uniquement pour affichage fluide
+  // chez les autres joueurs ; n'est jamais stocké côté serveur) ----------
+  socket.on("pictionary_live_point", ({ code, x, y, color, size, newStroke }) => {
+    const room = rooms.get(code);
+    const info = socketToRoom.get(socket.id);
+    if (!room || !info || room.status !== "pictionary") return;
+    const pc = room.pictionary;
+    if (!pc || pc.roundOver || pc.currentDrawer !== info.playerNum) return;
+    if (typeof x !== "number" || typeof y !== "number") return;
+    touch(room);
+    socket.to(code).emit("pictionary_live_point", {
+      x: x,
+      y: y,
+      color: color,
+      size: size,
+      newStroke: !!newStroke,
+    });
+  });
+
+  // ---------- Fin d'un trait de crayon : on le stocke pour la resync ----------
+  socket.on("pictionary_stroke_end", ({ code, stroke }) => {
+    const room = rooms.get(code);
+    const info = socketToRoom.get(socket.id);
+    if (!room || !info || room.status !== "pictionary") return;
+    const pc = room.pictionary;
+    if (!pc || pc.roundOver || pc.currentDrawer !== info.playerNum) return;
+    if (!stroke || !Array.isArray(stroke.points) || stroke.points.length === 0) return;
+    const clean = {
+      type: "stroke",
+      color: (stroke.color || "#000000").toString().slice(0, 16),
+      size: Math.max(1, Math.min(60, Number(stroke.size) || 6)),
+      points: stroke.points
+        .filter((pt) => Array.isArray(pt) && pt.length === 2)
+        .map((pt) => [Number(pt[0]) || 0, Number(pt[1]) || 0])
+        .slice(0, 3000),
+    };
+    pc.actions.push(clean);
+    touch(room);
+  });
+
+  // ---------- Seau de remplissage ----------
+  socket.on("pictionary_fill", ({ code, x, y, color }) => {
+    const room = rooms.get(code);
+    const info = socketToRoom.get(socket.id);
+    if (!room || !info || room.status !== "pictionary") return;
+    const pc = room.pictionary;
+    if (!pc || pc.roundOver || pc.currentDrawer !== info.playerNum) return;
+    if (typeof x !== "number" || typeof y !== "number") return;
+    const clean = { type: "fill", x: x, y: y, color: (color || "#000000").toString().slice(0, 16) };
+    pc.actions.push(clean);
+    touch(room);
+    socket.to(code).emit("pictionary_fill_apply", clean);
+  });
+
+  // ---------- Annuler le dernier trait/action ----------
+  socket.on("pictionary_undo", ({ code }) => {
+    const room = rooms.get(code);
+    const info = socketToRoom.get(socket.id);
+    if (!room || !info || room.status !== "pictionary") return;
+    const pc = room.pictionary;
+    if (!pc || pc.roundOver || pc.currentDrawer !== info.playerNum) return;
+    pc.actions.pop();
+    touch(room);
+    io.to(code).emit("pictionary_actions_sync", { actions: pc.actions });
+  });
+
+  // ---------- Tout effacer ----------
+  socket.on("pictionary_clear", ({ code }) => {
+    const room = rooms.get(code);
+    const info = socketToRoom.get(socket.id);
+    if (!room || !info || room.status !== "pictionary") return;
+    const pc = room.pictionary;
+    if (!pc || pc.roundOver || pc.currentDrawer !== info.playerNum) return;
+    pc.actions = [];
+    touch(room);
+    io.to(code).emit("pictionary_actions_sync", { actions: pc.actions });
+  });
+
+  // ---------- Un joueur envoie une proposition (ou un message de chat) ----------
+  socket.on("pictionary_chat_guess", ({ code, text }) => {
+    const room = rooms.get(code);
+    const info = socketToRoom.get(socket.id);
+    if (!room || !info || room.status !== "pictionary") return;
+    const pc = room.pictionary;
+    if (!pc || pc.roundOver) return;
+    const playerNum = info.playerNum;
+    const playerName = room.players[playerNum] ? room.players[playerNum].name : "Joueur";
+    const clean = (text || "").toString().trim().slice(0, 100);
+    if (!clean) return;
+
+    // Le Dessinateur ou un joueur ayant déjà trouvé peut discuter, mais ça
+    // ne compte jamais comme une nouvelle proposition de réponse.
+    if (playerNum === pc.currentDrawer || pc.statuses[playerNum] === "found") {
+      pc.chat.push({ type: "chat", playerNum: playerNum, name: playerName, text: clean });
+      touch(room);
+      emitPictionaryStateToRoom(room);
+      return;
+    }
+
+    const correct = pc.secret && normalizeName(clean) === normalizeName(pc.secret.name);
+    if (correct) {
+      pc.statuses[playerNum] = "found";
+      pc.foundOrder.push(playerNum);
+      const rank = pc.foundOrder.length;
+      const basePoints = PICTIONARY_RANK_POINTS[Math.min(rank - 1, PICTIONARY_RANK_POINTS.length - 1)];
+      const pts = Math.max(PICTIONARY_MIN_POINTS, basePoints);
+      pc.roundPoints[playerNum] = pts;
+      pc.totals[playerNum] = (pc.totals[playerNum] || 0) + pts;
+      pc.chat.push({ type: "found", playerNum: playerNum, name: playerName });
+      touch(room);
+      checkPictionaryRoundEnd(room);
+    } else {
+      pc.chat.push({ type: "chat", playerNum: playerNum, name: playerName, text: clean });
+      touch(room);
+    }
+    emitPictionaryStateToRoom(room);
+  });
+
+  // ---------- Passage à la manche suivante (vote unanime) ----------
+  socket.on("pictionary_continue", ({ code }) => {
+    const room = rooms.get(code);
+    const info = socketToRoom.get(socket.id);
+    if (!room || !info || room.status !== "pictionary") return;
+    const pc = room.pictionary;
+    if (!pc || !pc.roundOver) return;
+    pc.continueReady[info.playerNum] = true;
+    touch(room);
+
+    const allReady = pc.participants.every((n) => pc.continueReady[n]);
+    if (allReady) {
+      if (pc.round >= pc.totalRounds) {
+        room.status = "pictionary_over";
+        io.to(code).emit("pictionary_game_over", { totals: pc.totals, players: publicPlayers(room) });
+      } else {
+        startPictionaryRound(room);
+        emitPictionaryStateToRoom(room);
+      }
+    } else {
+      io.to(code).emit("pictionary_continue_status", { continueReady: pc.continueReady });
+    }
+  });
+
   // Vote de revanche : une fois tous les joueurs prêts, on ne relance pas
   // directement la partie. On renvoie tout le monde en salle d'attente pour
   // permettre à l'hôte de modifier générations / mode de grille avant de
@@ -865,7 +1142,8 @@ io.on("connection", (socket) => {
     if (
       room.status !== "victory" &&
       room.status !== "demicercle_over" &&
-      room.status !== "devinmon_over"
+      room.status !== "devinmon_over" &&
+      room.status !== "pictionary_over"
     )
       return;
     room.players[info.playerNum].replayReady = true;
@@ -883,6 +1161,7 @@ io.on("connection", (socket) => {
       });
       room.demiCercle = null;
       room.devinmon = null;
+      room.pictionary = null;
       room.status = "lobby";
       room.currentPlayer = 1;
       room.guessMode = false;
@@ -952,12 +1231,16 @@ function buildResyncPayload(room, forPlayerNum) {
     opponentFlipped: opponent && opponent.flipped ? opponent.flipped : {},
     demiCercle: null,
     devinmon: null,
+    pictionary: null,
   };
   if (room.mode === "demicercle" && room.demiCercle) {
     payload.demiCercle = demiCerclePayloadFor(room, forPlayerNum);
   }
   if (room.mode === "devinmon" && room.devinmon) {
     payload.devinmon = devinmonPayloadFor(room, forPlayerNum);
+  }
+  if (room.mode === "pictionary" && room.pictionary) {
+    payload.pictionary = pictionaryPayloadFor(room, forPlayerNum);
   }
   return payload;
 }
