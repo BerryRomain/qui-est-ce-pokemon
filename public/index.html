@@ -380,7 +380,15 @@
           </div>
         </div>
         <div class="pg-toolbar" id="pgToolbar">
-          <div class="pg-colors" id="pgColors"></div>
+          <div class="pg-colorpicker">
+            <div class="pg-cp-sv" id="pgCpSv">
+              <div class="pg-cp-cursor" id="pgCpCursor"></div>
+            </div>
+            <div class="pg-cp-side">
+              <input type="range" id="pgCpHue" class="pg-cp-hue" min="0" max="360" value="0" title="Teinte">
+              <div class="pg-cp-preview" id="pgCpPreview" title="Couleur actuelle"></div>
+            </div>
+          </div>
           <input type="range" id="pgBrushSize" min="2" max="28" value="6" title="Taille du pinceau">
           <button type="button" class="pg-tool-btn active" id="pgToolPen" title="Crayon">✏️</button>
           <button type="button" class="pg-tool-btn" id="pgToolFill" title="Seau de remplissage">🪣</button>

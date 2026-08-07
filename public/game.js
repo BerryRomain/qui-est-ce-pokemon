@@ -120,15 +120,14 @@
   var pgLastRenderedRound = null; // sert à ne redessiner le canevas que sur un changement de manche
   var pgTool = "pen";
   var pgColor = "#22221F";
+  var pgHue = 0; // teinte courante (0-360), pilotée par le curseur de teinte
+  var pgSat = 0.06; // saturation courante (0-1), pilotée par la position X sur le rectangle SV
+  var pgVal = 0.13; // luminosité/valeur courante (0-1), pilotée par la position Y sur le rectangle SV
   var pgBrushSize = 6;
   var pgDrawing = false;
   var pgCurrentStroke = null;
   var pgCanvas = document.getElementById("pgCanvas");
   var pgCtx = pgCanvas ? pgCanvas.getContext("2d") : null;
-  var PG_COLORS = [
-    "#22221F", "#FFFFFF", "#E3350D", "#FFCB05", "#3B4CCA", "#2ECC71",
-    "#8E44AD", "#FF8C1A", "#7d4b28", "#00b3b3", "#ff7ab6", "#7d7d7d",
-  ];
 
   // ---------- Accueil ----------
   document.getElementById("btnGoCreate").addEventListener("click", function () {
@@ -1733,27 +1732,96 @@
     return p ? p.name : "Joueur " + playerNum;
   }
 
-  // ---------- Palette de couleurs ----------
-  (function buildPgColorPalette() {
-    var container = document.getElementById("pgColors");
-    if (!container) return;
-    PG_COLORS.forEach(function (hex) {
-      var btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "pg-color-swatch" + (hex === pgColor ? " active" : "");
-      btn.style.background = hex;
-      btn.addEventListener("click", function () {
-        pgColor = hex;
-        pgTool = pgTool === "eraser" ? "pen" : pgTool;
-        pgSetActiveTool(pgTool);
-        container.querySelectorAll(".pg-color-swatch").forEach(function (el) {
-          el.classList.remove("active");
-        });
-        btn.classList.add("active");
-      });
-      container.appendChild(btn);
+  // ---------- Sélecteur de couleur rectangulaire (teinte + saturation/luminosité) ----------
+  function pgHsvToHex(h, s, v) {
+    h = ((h % 360) + 360) % 360 / 360;
+    var r, g, b;
+    var i = Math.floor(h * 6);
+    var f = h * 6 - i;
+    var p = v * (1 - s);
+    var q = v * (1 - f * s);
+    var t = v * (1 - (1 - f) * s);
+    switch (i % 6) {
+      case 0: r = v; g = t; b = p; break;
+      case 1: r = q; g = v; b = p; break;
+      case 2: r = p; g = v; b = t; break;
+      case 3: r = p; g = q; b = v; break;
+      case 4: r = t; g = p; b = v; break;
+      default: r = v; g = p; b = q; break;
+    }
+    function toHex(x) {
+      return ("0" + Math.round(x * 255).toString(16)).slice(-2);
+    }
+    return "#" + toHex(r) + toHex(g) + toHex(b);
+  }
+
+  var pgCpSv = document.getElementById("pgCpSv");
+  var pgCpCursor = document.getElementById("pgCpCursor");
+  var pgCpHue = document.getElementById("pgCpHue");
+  var pgCpPreview = document.getElementById("pgCpPreview");
+
+  function pgRefreshColorFromState() {
+    pgColor = pgHsvToHex(pgHue, pgSat, pgVal);
+    if (pgCpPreview) pgCpPreview.style.background = pgColor;
+    if (pgCpCursor) {
+      pgCpCursor.style.left = (pgSat * 100) + "%";
+      pgCpCursor.style.top = ((1 - pgVal) * 100) + "%";
+      // Le point du curseur passe en clair sur les zones sombres pour rester visible
+      pgCpCursor.style.borderColor = pgVal < 0.55 || pgSat > 0.75 ? "#ffffff" : "#22221F";
+    }
+    pgTool = pgTool === "eraser" ? "pen" : pgTool;
+    pgSetActiveTool(pgTool);
+  }
+
+  function pgPickFromSvEvent(evt) {
+    if (!pgCpSv) return;
+    var rect = pgCpSv.getBoundingClientRect();
+    var clientX = evt.touches && evt.touches.length ? evt.touches[0].clientX : evt.clientX;
+    var clientY = evt.touches && evt.touches.length ? evt.touches[0].clientY : evt.clientY;
+    var sx = (clientX - rect.left) / rect.width;
+    var sy = (clientY - rect.top) / rect.height;
+    sx = Math.max(0, Math.min(1, sx));
+    sy = Math.max(0, Math.min(1, sy));
+    pgSat = sx;
+    pgVal = 1 - sy;
+    pgRefreshColorFromState();
+  }
+
+  var pgPickingSv = false;
+  if (pgCpSv) {
+    pgCpSv.addEventListener("mousedown", function (e) {
+      pgPickingSv = true;
+      pgPickFromSvEvent(e);
     });
-  })();
+    window.addEventListener("mousemove", function (e) {
+      if (pgPickingSv) pgPickFromSvEvent(e);
+    });
+    window.addEventListener("mouseup", function () {
+      pgPickingSv = false;
+    });
+    pgCpSv.addEventListener("touchstart", function (e) {
+      pgPickingSv = true;
+      pgPickFromSvEvent(e);
+      e.preventDefault();
+    }, { passive: false });
+    pgCpSv.addEventListener("touchmove", function (e) {
+      if (pgPickingSv) {
+        pgPickFromSvEvent(e);
+        e.preventDefault();
+      }
+    }, { passive: false });
+    pgCpSv.addEventListener("touchend", function () {
+      pgPickingSv = false;
+    });
+  }
+  if (pgCpHue) {
+    pgCpHue.addEventListener("input", function () {
+      pgHue = Number(pgCpHue.value) || 0;
+      if (pgCpSv) pgCpSv.style.backgroundColor = "hsl(" + pgHue + ", 100%, 50%)";
+      pgRefreshColorFromState();
+    });
+  }
+  pgRefreshColorFromState();
 
   function pgSetActiveTool(tool) {
     pgTool = tool;
