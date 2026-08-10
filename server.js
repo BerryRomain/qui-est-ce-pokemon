@@ -11,12 +11,15 @@ const GRID_SIZE = 48;
 const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sans caractères ambigus (0,O,1,I)
 const ROOM_TTL_MS = 1000 * 60 * 60 * 4; // 4h d'inactivité -> nettoyage
 const GRID_MODES = ["normal", "mega"];
-const GAME_MODES = ["quiestce", "demicercle", "devinmon", "pictionary"];
+const GAME_MODES = ["quiestce", "demicercle", "devinmon", "pictionary", "pokedextarget"];
 const DEMI_CERCLE_ROUNDS = 10;
 const DEVINMON_MIN_PLAYERS = 2;
 const DEVINMON_MAX_PLAYERS = 6;
 const PICTIONARY_MIN_PLAYERS = 2;
 const PICTIONARY_MAX_PLAYERS = 6;
+const POKEDEXTARGET_MIN_PLAYERS = 2;
+const POKEDEXTARGET_MAX_PLAYERS = 6;
+const POKEDEXTARGET_SUB_MODES = ["number", "image"];
 // Points attribués selon le rang de découverte (1er à trouver, 2e, etc.)
 const PICTIONARY_RANK_POINTS = [100, 80, 65, 55, 45, 35];
 const PICTIONARY_MIN_POINTS = 20;
@@ -45,6 +48,15 @@ const POKEMON_BY_GEN = JSON.parse(
 const AVAILABLE_GENERATIONS = Object.keys(POKEMON_BY_GEN)
   .map(Number)
   .sort((a, b) => a - b);
+
+// Bornes globales du Pokédex national (toutes générations confondues), utilisées
+// pour valider les propositions numériques du mode Pokédex Target - sous-mode "image".
+const ALL_POKEDEX_IDS = [];
+AVAILABLE_GENERATIONS.forEach((g) => {
+  POKEMON_BY_GEN[String(g)].forEach((p) => ALL_POKEDEX_IDS.push(p.id));
+});
+const POKEDEX_MIN_ID = Math.min(...ALL_POKEDEX_IDS);
+const POKEDEX_MAX_ID = Math.max(...ALL_POKEDEX_IDS);
 
 function spriteUrl(id) {
   return (
@@ -144,6 +156,7 @@ function roomSummary(room) {
     status: room.status,
     generations: room.generations,
     gridMode: room.gridMode,
+    pdtSubMode: room.pdtSubMode || "number",
     maxPlayers: room.maxPlayers,
     players: publicPlayers(room),
   };
@@ -453,6 +466,81 @@ function checkPictionaryRoundEnd(room) {
   });
 }
 
+// ---------- Fonctions Mode Pokédex Target ----------
+
+function startPdtRound(room) {
+  const dc = room.pokedextarget;
+  dc.round += 1;
+
+  const pool = buildPool(room.generations).filter((p) => dc.usedIds.indexOf(p.id) === -1);
+  const source = pool.length ? pool : buildPool(room.generations);
+  const poke = shuffle(source)[0];
+  dc.usedIds.push(poke.id);
+  dc.secret = poke;
+  dc.answers = {};
+  dc.submitted = {};
+  dc.participants.forEach((n) => (dc.submitted[n] = false));
+  dc.continueReady = {};
+  dc.roundOver = false;
+}
+
+// Construit le payload envoyé à un joueur donné : la cible (numéro ou image+nom)
+// est identique pour tous les joueurs, mais l'état de soumission est individuel.
+// Les réponses des autres joueurs ne sont jamais envoyées avant que tout le
+// monde ait soumis, pour éviter qu'un joueur ne déduise le numéro secret via
+// la proposition (et l'écart) d'un autre joueur avant d'avoir répondu lui-même.
+function pdtPayloadFor(room, playerNum) {
+  const dc = room.pokedextarget;
+  const submittedCount = dc.participants.filter((n) => dc.submitted[n]).length;
+  const payload = {
+    round: dc.round,
+    totalRounds: dc.totalRounds,
+    subMode: dc.subMode,
+    totals: dc.totals,
+    roundOver: dc.roundOver,
+    mySubmitted: !!dc.submitted[playerNum],
+    submittedCount: submittedCount,
+    participantsCount: dc.participants.length,
+    maxDexNumber: POKEDEX_MAX_ID,
+    minDexNumber: POKEDEX_MIN_ID,
+    pool: dc.subMode === "number" ? dc.pool : null,
+    target: null,
+    results: null,
+  };
+  if (!dc.roundOver) {
+    payload.target =
+      dc.subMode === "number"
+        ? { number: dc.secret.id }
+        : { pokemon: { id: dc.secret.id, name: dc.secret.name } };
+  } else {
+    payload.results = {
+      secret: { id: dc.secret.id, name: dc.secret.name },
+      answers: dc.participants.map((n) => {
+        const a = dc.answers[n] || null;
+        return {
+          playerNum: n,
+          name: room.players[n] ? room.players[n].name : "Joueur " + n,
+          guessPokemon: a && a.guessPokemon ? a.guessPokemon : null,
+          guessNumber: a ? a.guessNumber : null,
+          diff: a ? a.diff : null,
+          points: a ? a.points : null,
+        };
+      }),
+    };
+  }
+  return payload;
+}
+
+function emitPdtStateToRoom(room) {
+  const dc = room.pokedextarget;
+  dc.participants.forEach((n) => {
+    const p = room.players[n];
+    if (p && p.socketId) {
+      io.to(p.socketId).emit("pokedextarget_state", pdtPayloadFor(room, n));
+    }
+  });
+}
+
 io.on("connection", (socket) => {
   socket.on("create_room", ({ name, mode, maxPlayers }) => {
     const code = makeRoomCode();
@@ -464,12 +552,16 @@ io.on("connection", (socket) => {
     } else if (cleanMode === "pictionary") {
       cap = Math.round(Number(maxPlayers)) || 2;
       cap = Math.max(PICTIONARY_MIN_PLAYERS, Math.min(PICTIONARY_MAX_PLAYERS, cap));
+    } else if (cleanMode === "pokedextarget") {
+      cap = Math.round(Number(maxPlayers)) || 2;
+      cap = Math.max(POKEDEXTARGET_MIN_PLAYERS, Math.min(POKEDEXTARGET_MAX_PLAYERS, cap));
     }
     const room = {
       code,
       mode: cleanMode,
       generations: [1],
       gridMode: "normal",
+      pdtSubMode: "number",
       maxPlayers: cap,
       status: "lobby",
       players: {
@@ -483,6 +575,7 @@ io.on("connection", (socket) => {
       demiCercle: null,
       devinmon: null,
       pictionary: null,
+      pokedextarget: null,
       lastActivity: Date.now(),
     };
     for (let n = 2; n <= cap; n++) room.players[n] = null;
@@ -539,10 +632,22 @@ io.on("connection", (socket) => {
       room.status === "devinmon" ||
       room.status === "devinmon_over" ||
       room.status === "pictionary" ||
-      room.status === "pictionary_over"
+      room.status === "pictionary_over" ||
+      room.status === "pokedextarget" ||
+      room.status === "pokedextarget_over"
     ) {
       socket.emit("resync", buildResyncPayload(room, playerNum));
     }
+  });
+
+  socket.on("set_pdt_submode", ({ code, subMode }) => {
+    const room = rooms.get(code);
+    const info = socketToRoom.get(socket.id);
+    if (!room || !info || info.playerNum !== 1) return; // seul l'hôte choisit
+    if (POKEDEXTARGET_SUB_MODES.indexOf(subMode) === -1) return;
+    room.pdtSubMode = subMode;
+    touch(room);
+    io.to(code).emit("players_update", roomSummary(room));
   });
 
   socket.on("set_generations", ({ code, generations }) => {
@@ -647,6 +752,39 @@ io.on("connection", (socket) => {
       startPictionaryRound(room);
       touch(room);
       emitPictionaryStateToRoom(room);
+      return;
+    }
+
+    // ---- Branche Mode Pokédex Target ----
+    if (room.mode === "pokedextarget") {
+      const pool = buildPool(room.generations);
+      const totalRounds = connected.length * 2;
+      if (pool.length < totalRounds) {
+        socket.emit("error_message", {
+          message: "Sélectionne plus de générations (au moins " + totalRounds + " Pokémon nécessaires).",
+        });
+        return;
+      }
+      room.status = "pokedextarget";
+      occupiedPlayerNums(room).forEach((n) => (room.players[n].replayReady = false));
+      room.pokedextarget = {
+        totalRounds: totalRounds,
+        round: 0,
+        participants: connected.slice(),
+        subMode: room.pdtSubMode === "image" ? "image" : "number",
+        pool: shuffle(pool).sort((a, b) => a.name.localeCompare(b.name, "fr")),
+        secret: null,
+        answers: {},
+        submitted: {},
+        totals: {},
+        continueReady: {},
+        usedIds: [],
+        roundOver: false,
+      };
+      connected.forEach((n) => (room.pokedextarget.totals[n] = 0));
+      startPdtRound(room);
+      touch(room);
+      emitPdtStateToRoom(room);
       return;
     }
 
@@ -986,6 +1124,75 @@ io.on("connection", (socket) => {
   });
 
   // =====================================================================
+  // ==================== MODE POKÉDEX TARGET ============================
+  // =====================================================================
+
+  // ---------- Un joueur envoie sa proposition pour la manche en cours ----------
+  socket.on("pokedextarget_submit_guess", ({ code, guessPokemonId, guessNumber }) => {
+    const room = rooms.get(code);
+    const info = socketToRoom.get(socket.id);
+    if (!room || !info || room.status !== "pokedextarget") return;
+    const dc = room.pokedextarget;
+    if (!dc || dc.roundOver) return;
+    const playerNum = info.playerNum;
+    if (dc.participants.indexOf(playerNum) === -1) return;
+    if (dc.submitted[playerNum]) return;
+
+    let entry = null;
+    if (dc.subMode === "number") {
+      const pid = Number(guessPokemonId);
+      const candidate = dc.pool.find((p) => p.id === pid);
+      if (!candidate) return;
+      const diff = Math.abs(candidate.id - dc.secret.id);
+      entry = { guessPokemon: { id: candidate.id, name: candidate.name }, guessNumber: null, diff: diff, points: diff };
+    } else {
+      let num = Math.round(Number(guessNumber));
+      if (isNaN(num)) return;
+      num = Math.max(POKEDEX_MIN_ID, Math.min(POKEDEX_MAX_ID, num));
+      const diff = Math.abs(num - dc.secret.id);
+      entry = { guessPokemon: null, guessNumber: num, diff: diff, points: diff };
+    }
+
+    dc.answers[playerNum] = entry;
+    dc.submitted[playerNum] = true;
+    touch(room);
+
+    const allSubmitted = dc.participants.every((n) => dc.submitted[n]);
+    if (allSubmitted) {
+      dc.participants.forEach((n) => {
+        const a = dc.answers[n];
+        dc.totals[n] = (dc.totals[n] || 0) + (a ? a.points : 0);
+      });
+      dc.roundOver = true;
+    }
+    emitPdtStateToRoom(room);
+  });
+
+  // ---------- Passage à la manche suivante (vote unanime) ----------
+  socket.on("pokedextarget_continue", ({ code }) => {
+    const room = rooms.get(code);
+    const info = socketToRoom.get(socket.id);
+    if (!room || !info || room.status !== "pokedextarget") return;
+    const dc = room.pokedextarget;
+    if (!dc || !dc.roundOver) return;
+    dc.continueReady[info.playerNum] = true;
+    touch(room);
+
+    const allReady = dc.participants.every((n) => dc.continueReady[n]);
+    if (allReady) {
+      if (dc.round >= dc.totalRounds) {
+        room.status = "pokedextarget_over";
+        io.to(code).emit("pokedextarget_game_over", { totals: dc.totals, players: publicPlayers(room) });
+      } else {
+        startPdtRound(room);
+        emitPdtStateToRoom(room);
+      }
+    } else {
+      io.to(code).emit("pokedextarget_continue_status", { continueReady: dc.continueReady });
+    }
+  });
+
+  // =====================================================================
   // ============ MODE DESSINE-MOI UN POKÉMON (Pictionary) ==============
   // =====================================================================
 
@@ -1143,7 +1350,8 @@ io.on("connection", (socket) => {
       room.status !== "victory" &&
       room.status !== "demicercle_over" &&
       room.status !== "devinmon_over" &&
-      room.status !== "pictionary_over"
+      room.status !== "pictionary_over" &&
+      room.status !== "pokedextarget_over"
     )
       return;
     room.players[info.playerNum].replayReady = true;
@@ -1162,6 +1370,7 @@ io.on("connection", (socket) => {
       room.demiCercle = null;
       room.devinmon = null;
       room.pictionary = null;
+      room.pokedextarget = null;
       room.status = "lobby";
       room.currentPlayer = 1;
       room.guessMode = false;
@@ -1220,6 +1429,7 @@ function buildResyncPayload(room, forPlayerNum) {
     mode: room.mode,
     generations: room.generations,
     gridMode: room.gridMode,
+    pdtSubMode: room.pdtSubMode || "number",
     maxPlayers: room.maxPlayers,
     gamePokemons: room.gamePokemons,
     currentPlayer: room.currentPlayer,
@@ -1232,6 +1442,7 @@ function buildResyncPayload(room, forPlayerNum) {
     demiCercle: null,
     devinmon: null,
     pictionary: null,
+    pokedextarget: null,
   };
   if (room.mode === "demicercle" && room.demiCercle) {
     payload.demiCercle = demiCerclePayloadFor(room, forPlayerNum);
@@ -1241,6 +1452,9 @@ function buildResyncPayload(room, forPlayerNum) {
   }
   if (room.mode === "pictionary" && room.pictionary) {
     payload.pictionary = pictionaryPayloadFor(room, forPlayerNum);
+  }
+  if (room.mode === "pokedextarget" && room.pokedextarget) {
+    payload.pokedextarget = pdtPayloadFor(room, forPlayerNum);
   }
   return payload;
 }

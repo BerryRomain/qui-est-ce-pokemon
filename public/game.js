@@ -18,6 +18,8 @@
     devinmonVictory: document.getElementById("screen-devinmon-victory"),
     pictionary: document.getElementById("screen-pictionary"),
     pictionaryVictory: document.getElementById("screen-pictionary-victory"),
+    pokedextarget: document.getElementById("screen-pokedextarget"),
+    pokedextargetVictory: document.getElementById("screen-pokedextarget-victory"),
   };
   var modalRoot = document.getElementById("modalRoot");
   var connectionBanner = document.getElementById("connectionBanner");
@@ -51,6 +53,7 @@
   var roomPlayersCache = null;
   var selectedCreateMode = "quiestce";
   var selectedDevinmonPlayerCount = 2;
+  var selectedPdtSubMode = "number";
   var availableGenerations = []; // [{id,count}]
   var selectedGenerations = [1];
   var selectedGridMode = "normal";
@@ -117,6 +120,24 @@
     foundCount: 0,
     guessersCount: 0,
   };
+  // ---------- État local Mode Pokédex Target ----------
+  var pdtState = {
+    round: 0,
+    totalRounds: 0,
+    subMode: "number",
+    totals: {},
+    roundOver: false,
+    mySubmitted: false,
+    submittedCount: 0,
+    participantsCount: 2,
+    maxDexNumber: 1025,
+    minDexNumber: 1,
+    pool: [],
+    target: null,
+    results: null,
+  };
+  var pdtSelectedPokemon = null; // {id,name} choisi via la recherche (sous-mode "number")
+
   var pgLastRenderedRound = null; // sert à ne redessiner le canevas que sur un changement de manche
   var pgTool = "pen";
   var pgColor = "#22221F";
@@ -205,6 +226,23 @@
     if (pgCtx && pgCanvas) pgCtx.clearRect(0, 0, pgCanvas.width, pgCanvas.height);
   }
 
+  function resetPdtState() {
+    pdtState.round = 0;
+    pdtState.totalRounds = 0;
+    pdtState.subMode = "number";
+    pdtState.totals = {};
+    pdtState.roundOver = false;
+    pdtState.mySubmitted = false;
+    pdtState.submittedCount = 0;
+    pdtState.participantsCount = 2;
+    pdtState.maxDexNumber = 1025;
+    pdtState.minDexNumber = 1;
+    pdtState.pool = [];
+    pdtState.target = null;
+    pdtState.results = null;
+    pdtSelectedPokemon = null;
+  }
+
   function resetLocalState() {
     myPlayerNum = null;
     roomCode = null;
@@ -221,6 +259,7 @@
     resetDcState();
     resetDmState();
     resetPgState();
+    resetPdtState();
   }
 
   function resetRoundState() {
@@ -234,6 +273,7 @@
     resetDcState();
     resetDmState();
     resetPgState();
+    resetPdtState();
   }
 
   // ---------- Sélection du mode de jeu (écran Créer) ----------
@@ -243,17 +283,27 @@
     document.getElementById("modeCardDemicercle").classList.toggle("checked", m === "demicercle");
     document.getElementById("modeCardDevinmon").classList.toggle("checked", m === "devinmon");
     document.getElementById("modeCardPictionary").classList.toggle("checked", m === "pictionary");
+    document.getElementById("modeCardPokedextarget").classList.toggle("checked", m === "pokedextarget");
     var picker = document.getElementById("devinmonPlayerCountPicker");
     var hint = document.getElementById("playerCountPickerHint");
-    if (m === "devinmon" || m === "pictionary") {
+    if (m === "devinmon" || m === "pictionary" || m === "pokedextarget") {
       picker.classList.remove("hidden");
       hint.textContent =
         m === "devinmon"
           ? "De 2 à 6 joueurs. Chacun sera le Guide exactement 2 fois pendant la partie."
-          : "De 2 à 6 joueurs. Chacun sera le Dessinateur exactement 2 fois pendant la partie.";
+          : m === "pictionary"
+          ? "De 2 à 6 joueurs. Chacun sera le Dessinateur exactement 2 fois pendant la partie."
+          : "De 2 à 6 joueurs. Chacun joue exactement 2 manches pendant la partie.";
       buildDevinmonPlayerCountPicker();
     } else {
       picker.classList.add("hidden");
+    }
+    var pdtPicker = document.getElementById("pdtSubModePicker");
+    if (m === "pokedextarget") {
+      pdtPicker.classList.remove("hidden");
+      buildPdtSubModePicker("pdtSubModeOptions");
+    } else {
+      pdtPicker.classList.add("hidden");
     }
   }
   document.getElementById("modeCardQuiestce").addEventListener("click", function () {
@@ -268,6 +318,43 @@
   document.getElementById("modeCardPictionary").addEventListener("click", function () {
     setCreateMode("pictionary");
   });
+  document.getElementById("modeCardPokedextarget").addEventListener("click", function () {
+    setCreateMode("pokedextarget");
+  });
+
+  // ---------- Sélecteur du sens du jeu Pokédex Target (Numéro <-> Image) ----------
+  var PDT_SUBMODE_INFO = {
+    number: { label: "Numéro → Pokémon", desc: "Tu vois un numéro, devine quel Pokémon lui correspond." },
+    image: { label: "Image → Numéro", desc: "Tu vois l'image et le nom, devine son numéro exact." },
+  };
+  function buildPdtSubModePicker(containerId, onChange) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = "";
+    Object.keys(PDT_SUBMODE_INFO).forEach(function (key) {
+      var info = PDT_SUBMODE_INFO[key];
+      var label = document.createElement("label");
+      label.className = "grid-mode-option" + (selectedPdtSubMode === key ? " checked" : "");
+      var input = document.createElement("input");
+      input.type = "radio";
+      input.name = containerId;
+      input.value = key;
+      input.checked = selectedPdtSubMode === key;
+      input.addEventListener("change", function () {
+        if (!input.checked) return;
+        selectedPdtSubMode = key;
+        buildPdtSubModePicker(containerId, onChange);
+        if (onChange) onChange(key);
+      });
+      var span = document.createElement("span");
+      span.innerHTML =
+        '<span class="gm-label">' + info.label + "</span>" +
+        '<span class="gm-desc">' + info.desc + "</span>";
+      label.appendChild(input);
+      label.appendChild(span);
+      container.appendChild(label);
+    });
+  }
 
   function buildDevinmonPlayerCountPicker() {
     var container = document.getElementById("devinmonPlayerCountOptions");
@@ -303,7 +390,7 @@
     var name = document.getElementById("createName").value.trim();
     if (!name) name = "Joueur 1";
     var payload = { name: name, mode: selectedCreateMode };
-    if (selectedCreateMode === "devinmon" || selectedCreateMode === "pictionary") {
+    if (selectedCreateMode === "devinmon" || selectedCreateMode === "pictionary" || selectedCreateMode === "pokedextarget") {
       payload.maxPlayers = selectedDevinmonPlayerCount;
     }
     socket.emit("create_room", payload);
@@ -460,6 +547,7 @@
     roomPlayersCache = room.players;
     if (room.generations) selectedGenerations = room.generations.slice();
     if (room.gridMode) selectedGridMode = room.gridMode;
+    if (room.pdtSubMode) selectedPdtSubMode = room.pdtSubMode;
 
     var statusEl = document.getElementById("playersStatus");
     statusEl.innerHTML = "";
@@ -485,9 +573,11 @@
 
     var hostPicker = document.getElementById("hostGenPicker");
     var hostGridModePicker = document.getElementById("hostGridModePicker");
+    var hostPdtSubModePicker = document.getElementById("hostPdtSubModePicker");
     var dcHintHost = document.getElementById("dcModeHintHost");
     var dmHintHost = document.getElementById("dmModeHintHost");
     var pgHintHost = document.getElementById("pgModeHintHost");
+    var pdtHintHost = document.getElementById("pdtModeHintHost");
     var guestInfo = document.getElementById("guestGenInfo");
     var startBtn = document.getElementById("btnStartGame");
     var waitMsg = document.getElementById("waitingForHostMsg");
@@ -498,24 +588,42 @@
       buildGenGrid();
       if (roomMode === "demicercle") {
         hostGridModePicker.classList.add("hidden");
+        hostPdtSubModePicker.classList.add("hidden");
         dcHintHost.classList.remove("hidden");
         dmHintHost.classList.add("hidden");
         pgHintHost.classList.add("hidden");
+        pdtHintHost.classList.add("hidden");
       } else if (roomMode === "devinmon") {
         hostGridModePicker.classList.add("hidden");
+        hostPdtSubModePicker.classList.add("hidden");
         dcHintHost.classList.add("hidden");
         dmHintHost.classList.remove("hidden");
         pgHintHost.classList.add("hidden");
+        pdtHintHost.classList.add("hidden");
       } else if (roomMode === "pictionary") {
         hostGridModePicker.classList.add("hidden");
+        hostPdtSubModePicker.classList.add("hidden");
         dcHintHost.classList.add("hidden");
         dmHintHost.classList.add("hidden");
         pgHintHost.classList.remove("hidden");
-      } else {
-        hostGridModePicker.classList.remove("hidden");
+        pdtHintHost.classList.add("hidden");
+      } else if (roomMode === "pokedextarget") {
+        hostGridModePicker.classList.add("hidden");
+        hostPdtSubModePicker.classList.remove("hidden");
         dcHintHost.classList.add("hidden");
         dmHintHost.classList.add("hidden");
         pgHintHost.classList.add("hidden");
+        pdtHintHost.classList.remove("hidden");
+        buildPdtSubModePicker("pdtSubModeOptionsWaiting", function (key) {
+          socket.emit("set_pdt_submode", { code: roomCode, subMode: key });
+        });
+      } else {
+        hostGridModePicker.classList.remove("hidden");
+        hostPdtSubModePicker.classList.add("hidden");
+        dcHintHost.classList.add("hidden");
+        dmHintHost.classList.add("hidden");
+        pgHintHost.classList.add("hidden");
+        pdtHintHost.classList.add("hidden");
         buildGridModePicker();
       }
       var canStart = filledCount >= 2 && connectedCount === filledCount;
@@ -528,16 +636,21 @@
           ? "Démarrer le Devin'Mon"
           : roomMode === "pictionary"
           ? "Démarrer la partie de dessin"
+          : roomMode === "pokedextarget"
+          ? "Démarrer le Pokédex Target"
           : "Démarrer la partie";
       waitMsg.classList.add("hidden");
     } else {
       hostPicker.classList.add("hidden");
       hostGridModePicker.classList.add("hidden");
+      hostPdtSubModePicker.classList.add("hidden");
       dcHintHost.classList.add("hidden");
       dmHintHost.classList.add("hidden");
       pgHintHost.classList.add("hidden");
+      pdtHintHost.classList.add("hidden");
       guestInfo.classList.remove("hidden");
       var gridModeInfo = GRID_MODE_INFO[room.gridMode] || GRID_MODE_INFO.normal;
+      var pdtSubModeInfo = PDT_SUBMODE_INFO[room.pdtSubMode] || PDT_SUBMODE_INFO.number;
       var modeLabel =
         roomMode === "demicercle"
           ? "Mode Demi-Cercle"
@@ -545,6 +658,8 @@
           ? "Mode Devin'Mon"
           : roomMode === "pictionary"
           ? "Mode Dessine-moi un Pokémon"
+          : roomMode === "pokedextarget"
+          ? "Mode Pokédex Target"
           : "Mode Qui est-ce ?";
       var modeTag = '<span class="tag">' + modeLabel + "</span><br>";
       guestInfo.innerHTML =
@@ -555,7 +670,8 @@
             return '<span class="tag">Gen ' + g + "</span>";
           })
           .join(" ") +
-        (roomMode === "quiestce" ? '<br><span class="tag">' + gridModeInfo.label + "</span>" : "");
+        (roomMode === "quiestce" ? '<br><span class="tag">' + gridModeInfo.label + "</span>" : "") +
+        (roomMode === "pokedextarget" ? '<br><span class="tag">' + pdtSubModeInfo.label + "</span>" : "");
       startBtn.classList.add("hidden");
       waitMsg.classList.remove("hidden");
     }
@@ -599,6 +715,9 @@
     }
     if (screens.pictionaryVictory.classList.contains("hidden") === false) {
       updateDmReplayStatus(room, "pgReplayStatus");
+    }
+    if (screens.pokedextargetVictory.classList.contains("hidden") === false) {
+      updateDmReplayStatus(room, "pdtReplayStatus");
     }
   });
 
@@ -2261,12 +2380,308 @@
     socket.emit("replay_vote", { code: roomCode });
   });
 
+  // =====================================================================
+  // =============== MODE POKÉDEX TARGET — CLIENT ========================
+  // =====================================================================
+
+  function pdtPlayerName(playerNum) {
+    var p = roomPlayersCache && roomPlayersCache[playerNum];
+    return p ? p.name : "Joueur " + playerNum;
+  }
+
+  function pdtDiffClass(diff) {
+    if (diff <= 5) return "pdt-diff-great";
+    if (diff <= 30) return "pdt-diff-good";
+    return "pdt-diff-bad";
+  }
+
+  function pdtRenderSearchResults(query) {
+    var box = document.getElementById("pdtSearchResults");
+    var q = (query || "").trim().toLowerCase();
+    box.innerHTML = "";
+    if (!q) {
+      box.classList.add("hidden");
+      return;
+    }
+    var matches = pdtState.pool
+      .filter(function (p) {
+        return p.name.toLowerCase().indexOf(q) !== -1;
+      })
+      .slice(0, 8);
+    if (matches.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "pdt-search-empty";
+      empty.textContent = "Aucun Pokémon trouvé.";
+      box.appendChild(empty);
+      box.classList.remove("hidden");
+      return;
+    }
+    matches.forEach(function (p) {
+      var item = document.createElement("div");
+      item.className = "pdt-search-item";
+      item.innerHTML =
+        '<img src="' + spriteUrl(p.id) + '" alt="">' +
+        "<span>" + p.name + "</span>";
+      item.addEventListener("click", function () {
+        pdtSelectedPokemon = { id: p.id, name: p.name };
+        document.getElementById("pdtSearchInput").value = p.name;
+        box.innerHTML = "";
+        box.classList.add("hidden");
+        pdtRefreshSelectedPick();
+      });
+      box.appendChild(item);
+    });
+    box.classList.remove("hidden");
+  }
+
+  function pdtRefreshSelectedPick() {
+    var pick = document.getElementById("pdtSelectedPick");
+    var btn = document.getElementById("btnPdtSubmitNumber");
+    if (pdtSelectedPokemon) {
+      pick.classList.remove("hidden");
+      document.getElementById("pdtSelectedImg").src = spriteUrl(pdtSelectedPokemon.id);
+      document.getElementById("pdtSelectedName").textContent = pdtSelectedPokemon.name;
+      btn.disabled = pdtState.mySubmitted || pdtState.roundOver;
+    } else {
+      pick.classList.add("hidden");
+      btn.disabled = true;
+    }
+  }
+
+  var pdtSearchInputEl = document.getElementById("pdtSearchInput");
+  pdtSearchInputEl.addEventListener("input", function () {
+    pdtSelectedPokemon = null;
+    pdtRefreshSelectedPick();
+    pdtRenderSearchResults(pdtSearchInputEl.value);
+  });
+  document.addEventListener("click", function (evt) {
+    var wrap = document.getElementById("pdtSearchWrap") || pdtSearchInputEl.parentElement;
+    if (wrap && !wrap.contains(evt.target)) {
+      document.getElementById("pdtSearchResults").classList.add("hidden");
+    }
+  });
+
+  document.getElementById("btnPdtSubmitNumber").addEventListener("click", function () {
+    if (!pdtSelectedPokemon || pdtState.mySubmitted || pdtState.roundOver) return;
+    socket.emit("pokedextarget_submit_guess", { code: roomCode, guessPokemonId: pdtSelectedPokemon.id });
+  });
+
+  document.getElementById("btnPdtSubmitImage").addEventListener("click", function () {
+    if (pdtState.mySubmitted || pdtState.roundOver) return;
+    var input = document.getElementById("pdtNumberInput");
+    var val = Number(input.value);
+    if (isNaN(val) || !input.value) return;
+    val = Math.max(pdtState.minDexNumber, Math.min(pdtState.maxDexNumber, Math.round(val)));
+    socket.emit("pokedextarget_submit_guess", { code: roomCode, guessNumber: val });
+  });
+  document.getElementById("pdtNumberInput").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") document.getElementById("btnPdtSubmitImage").click();
+  });
+
+  function renderPdtScreen() {
+    document.getElementById("pdtRoundNum").textContent = pdtState.round;
+    document.getElementById("pdtTotalRounds").textContent = pdtState.totalRounds;
+    var subModeInfo = PDT_SUBMODE_INFO[pdtState.subMode] || PDT_SUBMODE_INFO.number;
+    document.getElementById("pdtSubModeBadge").textContent = "Mode " + subModeInfo.label;
+    document.getElementById("pdtNumberInput").max = pdtState.maxDexNumber;
+    document.getElementById("pdtNumberInput").min = pdtState.minDexNumber;
+
+    // Tableau des scores cumulés (le plus bas gagne)
+    var scoreboard = document.getElementById("pdtScoreboard");
+    scoreboard.innerHTML = "";
+    var nums = Object.keys(pdtState.totals).map(Number).sort(function (a, b) {
+      return a - b;
+    });
+    nums.forEach(function (n) {
+      var box = document.createElement("div");
+      box.className = "dm-score-box";
+      box.innerHTML =
+        '<span class="dm-score-name">' + pdtPlayerName(n) + (n === myPlayerNum ? " (toi)" : "") + "</span>" +
+        '<span class="dm-score-val">' + (pdtState.totals[n] || 0) + "</span>";
+      scoreboard.appendChild(box);
+    });
+
+    var panelNumber = document.getElementById("pdtTargetPanelNumber");
+    var panelImage = document.getElementById("pdtTargetPanelImage");
+    var answerNumber = document.getElementById("pdtAnswerPanelNumber");
+    var answerImage = document.getElementById("pdtAnswerPanelImage");
+    var revealPanel = document.getElementById("pdtRevealPanel");
+    var waitingMsg = document.getElementById("pdtWaitingMsg");
+
+    panelNumber.classList.add("hidden");
+    panelImage.classList.add("hidden");
+    answerNumber.classList.add("hidden");
+    answerImage.classList.add("hidden");
+    revealPanel.classList.add("hidden");
+    waitingMsg.classList.add("hidden");
+
+    if (!pdtState.roundOver) {
+      if (pdtState.subMode === "number") {
+        panelNumber.classList.remove("hidden");
+        var num = pdtState.target && pdtState.target.number !== undefined ? pdtState.target.number : 0;
+        document.getElementById("pdtTargetNumber").textContent = "#" + String(num).padStart(3, "0");
+      } else {
+        panelImage.classList.remove("hidden");
+        var poke = pdtState.target ? pdtState.target.pokemon : null;
+        document.getElementById("pdtTargetImg").src = poke ? spriteUrl(poke.id) : "";
+        document.getElementById("pdtTargetName").textContent = poke ? poke.name : "-";
+      }
+
+      if (pdtState.mySubmitted) {
+        waitingMsg.classList.remove("hidden");
+        document.getElementById("pdtSubmittedCount").textContent = pdtState.submittedCount;
+        document.getElementById("pdtParticipantsCount").textContent = pdtState.participantsCount;
+      } else if (pdtState.subMode === "number") {
+        answerNumber.classList.remove("hidden");
+        pdtRefreshSelectedPick();
+      } else {
+        answerImage.classList.remove("hidden");
+        document.getElementById("btnPdtSubmitImage").disabled = false;
+      }
+    } else {
+      revealPanel.classList.remove("hidden");
+      var results = pdtState.results;
+      var list = document.getElementById("pdtAnswersList");
+      list.innerHTML = "";
+      if (results) {
+        var bestDiff = null;
+        results.answers.forEach(function (a) {
+          if (a.diff !== null && (bestDiff === null || a.diff < bestDiff)) bestDiff = a.diff;
+        });
+        results.answers.forEach(function (a) {
+          var row = document.createElement("div");
+          row.className = "pdt-answer-row" + (a.diff === bestDiff ? " pdt-answer-best" : "");
+          var guessHtml;
+          if (a.guessPokemon) {
+            guessHtml =
+              '<img src="' + spriteUrl(a.guessPokemon.id) + '" alt="">' +
+              "<span>" + a.guessPokemon.name + "</span>";
+          } else if (a.guessNumber !== null && a.guessNumber !== undefined) {
+            guessHtml = "<span>#" + String(a.guessNumber).padStart(3, "0") + "</span>";
+          } else {
+            guessHtml = "<span>-</span>";
+          }
+          var diffLabel = a.diff === null || a.diff === undefined ? "-" : "écart : " + a.diff + " (+" + a.points + " pts)";
+          row.innerHTML =
+            '<span class="pdt-answer-name">' + a.name + (a.playerNum === myPlayerNum ? " (toi)" : "") + "</span>" +
+            '<span class="pdt-answer-guess">' + guessHtml + "</span>" +
+            '<span class="pdt-answer-diff ' + (a.diff === null ? "" : pdtDiffClass(a.diff)) + '">' + diffLabel + "</span>";
+          list.appendChild(row);
+        });
+
+        var revealLabel = document.getElementById("pdtRevealLabel");
+        var revealImg = document.getElementById("pdtRevealImg");
+        var revealName = document.getElementById("pdtRevealName");
+        if (pdtState.subMode === "number") {
+          revealLabel.textContent = "Le Pokémon qui portait ce numéro était";
+          revealImg.src = spriteUrl(results.secret.id);
+          revealName.textContent = results.secret.name;
+        } else {
+          revealLabel.textContent = "Son vrai numéro était";
+          revealImg.src = spriteUrl(results.secret.id);
+          revealName.textContent = "#" + String(results.secret.id).padStart(3, "0");
+        }
+      }
+      document.getElementById("pdtRevealWaitMsg").classList.add("hidden");
+      document.getElementById("btnPdtContinue").classList.remove("hidden");
+      document.getElementById("btnPdtContinue").disabled = false;
+    }
+  }
+
+  function applyPdtStateData(data) {
+    pdtState.round = data.round;
+    pdtState.totalRounds = data.totalRounds;
+    pdtState.subMode = data.subMode;
+    pdtState.totals = data.totals || {};
+    pdtState.roundOver = !!data.roundOver;
+    pdtState.mySubmitted = !!data.mySubmitted;
+    pdtState.submittedCount = data.submittedCount || 0;
+    pdtState.participantsCount = data.participantsCount || 2;
+    pdtState.maxDexNumber = data.maxDexNumber || 1025;
+    pdtState.minDexNumber = data.minDexNumber || 1;
+    if (data.pool) pdtState.pool = data.pool;
+    pdtState.target = data.target || null;
+    pdtState.results = data.results || null;
+    if (!pdtState.mySubmitted && !pdtState.roundOver) {
+      // Nouvelle manche ou pas encore répondu : on repart d'une saisie vierge.
+    } else {
+      pdtSelectedPokemon = null;
+    }
+    document.getElementById("pdtSearchInput").value = "";
+    document.getElementById("pdtSearchResults").classList.add("hidden");
+    document.getElementById("pdtNumberInput").value = "";
+    renderPdtScreen();
+  }
+
+  socket.on("pokedextarget_state", function (data) {
+    applyPdtStateData(data);
+    showOnly("pokedextarget");
+  });
+
+  document.getElementById("btnPdtContinue").addEventListener("click", function () {
+    document.getElementById("btnPdtContinue").disabled = true;
+    socket.emit("pokedextarget_continue", { code: roomCode });
+  });
+
+  socket.on("pokedextarget_continue_status", function (data) {
+    if (!data.continueReady[myPlayerNum]) return;
+    var waitMsg = document.getElementById("pdtRevealWaitMsg");
+    waitMsg.classList.remove("hidden");
+    waitMsg.textContent = "En attente que les autres joueurs cliquent sur Manche suivante...";
+    document.getElementById("btnPdtContinue").classList.add("hidden");
+  });
+
+  function pdtRenderFinalScores(totals) {
+    var nums = Object.keys(totals).map(Number).sort(function (a, b) {
+      return (totals[a] || 0) - (totals[b] || 0);
+    });
+    var lowestScore = nums.length ? totals[nums[0]] : 0;
+    var winners = nums.filter(function (n) {
+      return totals[n] === lowestScore;
+    });
+    var title;
+    if (winners.length > 1) {
+      title = "ÉGALITÉ !";
+    } else if (winners[0] === myPlayerNum) {
+      title = "TU AS GAGNÉ !";
+    } else {
+      title = pdtPlayerName(winners[0]) + " GAGNE !";
+    }
+    document.getElementById("pdtVictoryTitle").textContent = title;
+
+    var scoresEl = document.getElementById("pdtFinalScores");
+    scoresEl.innerHTML = "";
+    nums.forEach(function (n, idx) {
+      var row = document.createElement("div");
+      row.className = "dm-final-score-row" + (totals[n] === lowestScore ? " dm-final-winner" : "");
+      row.innerHTML =
+        '<span class="dm-final-rank">#' + (idx + 1) + "</span>" +
+        '<span class="dm-final-name">' + pdtPlayerName(n) + (n === myPlayerNum ? " (toi)" : "") + "</span>" +
+        '<span class="dm-final-total">' + (totals[n] || 0) + "</span>";
+      scoresEl.appendChild(row);
+    });
+  }
+
+  socket.on("pokedextarget_game_over", function (data) {
+    roomPlayersCache = data.players;
+    pdtRenderFinalScores(data.totals || {});
+    document.getElementById("btnPdtReplay").disabled = false;
+    document.getElementById("pdtReplayStatus").textContent = "En attente de tous les joueurs...";
+    showOnly("pokedextargetVictory");
+  });
+
+  document.getElementById("btnPdtReplay").addEventListener("click", function () {
+    document.getElementById("btnPdtReplay").disabled = true;
+    socket.emit("replay_vote", { code: roomCode });
+  });
+
   // ---------- Reconnexion / resynchronisation ----------
   socket.on("resync", function (data) {
     roomMode = data.mode || "quiestce";
     roomMaxPlayers = data.maxPlayers || roomMaxPlayers;
     selectedGenerations = data.generations.slice();
     if (data.gridMode) selectedGridMode = data.gridMode;
+    if (data.pdtSubMode) selectedPdtSubMode = data.pdtSubMode;
     gamePokemons = data.gamePokemons || [];
     currentPlayer = data.currentPlayer;
     guessMode = data.guessMode;
@@ -2349,6 +2764,13 @@
         pgScoresEl.appendChild(row);
       });
       showOnly("pictionaryVictory");
+    } else if (data.status === "pokedextarget" && data.pokedextarget) {
+      applyPdtStateData(data.pokedextarget);
+      showOnly("pokedextarget");
+    } else if (data.status === "pokedextarget_over") {
+      var pdt = data.pokedextarget || { totals: {} };
+      pdtRenderFinalScores(pdt.totals || {});
+      showOnly("pokedextargetVictory");
     }
   });
 

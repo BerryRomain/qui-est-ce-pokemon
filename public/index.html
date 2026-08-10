@@ -66,12 +66,23 @@
           <h3>Dessine-moi un Pokémon</h3>
           <p>2 à 6 joueurs. Un dessinateur, les autres devinent en direct dans le chat.</p>
         </div>
+        <div class="mode-card" data-mode="pokedextarget" id="modeCardPokedextarget">
+          <div class="emoji">🎯</div>
+          <h3>Pokédex Target</h3>
+          <p>2 à 6 joueurs. Vise le bon numéro ou le bon Pokémon : le moins d'écart possible gagne !</p>
+        </div>
       </div>
 
       <div id="devinmonPlayerCountPicker" class="grid-mode-picker hidden">
         <h3 class="pixel" style="font-size:0.85rem;">Nombre de joueurs</h3>
         <p class="gen-hint" id="playerCountPickerHint">De 2 à 6 joueurs. Chacun sera le Guide exactement 2 fois pendant la partie.</p>
         <div class="grid-mode-options" id="devinmonPlayerCountOptions"></div>
+      </div>
+
+      <div id="pdtSubModePicker" class="grid-mode-picker hidden">
+        <h3 class="pixel" style="font-size:0.85rem;">Sens du jeu</h3>
+        <p class="gen-hint">Choisis comment les joueurs devront deviner à chaque manche.</p>
+        <div class="grid-mode-options" id="pdtSubModeOptions"></div>
       </div>
 
       <div class="name-fields">
@@ -130,9 +141,16 @@
         <div class="grid-mode-options" id="gridModeOptions"></div>
       </div>
 
+      <div id="hostPdtSubModePicker" class="grid-mode-picker hidden">
+        <h3 class="pixel" style="font-size:0.85rem;">Sens du jeu</h3>
+        <p class="gen-hint">Choisis comment les joueurs devront deviner à chaque manche.</p>
+        <div class="grid-mode-options" id="pdtSubModeOptionsWaiting"></div>
+      </div>
+
       <p id="dcModeHintHost" class="gen-hint dc-hint hidden">Mode Demi-Cercle : 10 Pokémon aléatoires seront tirés (un par round) parmi les générations choisies.</p>
       <p id="dmModeHintHost" class="gen-hint dc-hint hidden">Mode Devin'Mon : chaque joueur sera le Guide 2 fois. Assure-toi d'avoir sélectionné assez de générations.</p>
       <p id="pgModeHintHost" class="gen-hint dc-hint hidden">Mode Dessine-moi un Pokémon : chaque joueur sera le Dessinateur 2 fois. Assure-toi d'avoir sélectionné assez de générations.</p>
+      <p id="pdtModeHintHost" class="gen-hint dc-hint hidden">Mode Pokédex Target : chaque joueur joue 2 manches. Assure-toi d'avoir sélectionné assez de générations.</p>
 
       <div id="guestGenInfo" class="gen-readonly hidden"></div>
 
@@ -434,6 +452,87 @@
       <button class="btn btn-green" id="btnPgReplay">Rejouer (modifier les paramètres)</button>
     </div>
     <div class="replay-status" id="pgReplayStatus">En attente de tous les joueurs...</div>
+  </div>
+
+  <!-- POKÉDEX TARGET : MANCHE -->
+  <div id="screen-pokedextarget" class="screen hidden">
+    <div class="dm-score-explainer">
+      But du jeu : marque le <strong>MOINS de points possible</strong> ! Ton score de manche = l'écart
+      entre ta proposition et la vraie réponse. Vise juste !
+    </div>
+
+    <div class="dm-header">
+      <div class="dm-round-badge pixel">MANCHE <span id="pdtRoundNum">1</span>/<span id="pdtTotalRounds">6</span></div>
+      <div class="pdt-submode-badge" id="pdtSubModeBadge">Mode Numéro → Pokémon</div>
+    </div>
+
+    <div class="dm-scoreboard" id="pdtScoreboard"></div>
+
+    <div class="pdt-target-panel" id="pdtTargetPanelNumber">
+      <span class="pdt-target-label pixel">NUMÉRO À TROUVER</span>
+      <div class="pdt-target-number" id="pdtTargetNumber">#000</div>
+      <p class="pdt-target-sub">Quel Pokémon possède ce numéro dans le Pokédex ? Cherche le plus proche possible !</p>
+    </div>
+
+    <div class="pdt-target-panel" id="pdtTargetPanelImage">
+      <span class="pdt-target-label pixel">POKÉMON À TROUVER</span>
+      <div class="dm-secret-box" style="justify-content:center;">
+        <img id="pdtTargetImg" src="" alt="">
+        <div>
+          <span class="dm-secret-name" id="pdtTargetName">-</span>
+        </div>
+      </div>
+      <p class="pdt-target-sub">Quel est son numéro exact dans le Pokédex ? Vise le plus proche possible !</p>
+    </div>
+
+    <div class="pdt-answer-panel" id="pdtAnswerPanelNumber">
+      <div class="pdt-search-wrap">
+        <input id="pdtSearchInput" type="text" autocomplete="off" placeholder="Cherche un nom de Pokémon...">
+        <div class="pdt-search-results hidden" id="pdtSearchResults"></div>
+      </div>
+      <div class="pdt-selected-pick hidden" id="pdtSelectedPick">
+        <img id="pdtSelectedImg" src="" alt="">
+        <span id="pdtSelectedName">-</span>
+      </div>
+      <button class="btn btn-green btn-lg" id="btnPdtSubmitNumber" disabled>Valider ma réponse</button>
+    </div>
+
+    <div class="pdt-answer-panel" id="pdtAnswerPanelImage">
+      <div class="pdt-number-input-row">
+        <input id="pdtNumberInput" type="number" min="1" max="1025" placeholder="Numéro Pokédex (ex : 245)">
+        <button class="btn btn-green btn-lg" id="btnPdtSubmitImage">Valider ma réponse</button>
+      </div>
+    </div>
+
+    <p class="pick-wait-msg hidden" id="pdtWaitingMsg">En attente des autres joueurs (<span id="pdtSubmittedCount">0</span>/<span id="pdtParticipantsCount">2</span>)...</p>
+
+    <div class="pdt-reveal-panel hidden" id="pdtRevealPanel">
+      <h3 class="pixel" style="font-size:0.8rem;">Réponses de tous les joueurs</h3>
+      <div class="pdt-answers-list" id="pdtAnswersList"></div>
+
+      <div class="dm-reveal-secret" id="pdtRevealSecretBox" style="justify-content:center;">
+        <img id="pdtRevealImg" src="" alt="">
+        <div>
+          <div style="font-size:0.8rem;color:#555;" id="pdtRevealLabel">La bonne réponse était</div>
+          <div id="pdtRevealName" style="font-weight:800;font-size:1.2rem;">-</div>
+        </div>
+      </div>
+
+      <button class="btn btn-blue btn-lg" id="btnPdtContinue">Manche suivante</button>
+      <p class="pick-wait-msg hidden" id="pdtRevealWaitMsg">En attente des autres joueurs...</p>
+    </div>
+  </div>
+
+  <!-- POKÉDEX TARGET : FIN DE PARTIE -->
+  <div id="screen-pokedextarget-victory" class="screen hidden">
+    <div class="trophy">🏆</div>
+    <h2 class="pixel" id="pdtVictoryTitle">FIN DE LA PARTIE</h2>
+    <p>Classement final (le score le plus bas gagne) :</p>
+    <div class="dm-final-scores" id="pdtFinalScores"></div>
+    <div class="replay-row">
+      <button class="btn btn-green" id="btnPdtReplay">Rejouer (modifier les paramètres)</button>
+    </div>
+    <div class="replay-status" id="pdtReplayStatus">En attente de tous les joueurs...</div>
   </div>
 
   <div class="footer-note">Sprites officiels via PokeAPI · Jeu multijoueur en ligne, invite tes amis avec un code de lobby.</div>
