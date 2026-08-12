@@ -20,6 +20,8 @@
     pictionaryVictory: document.getElementById("screen-pictionary-victory"),
     pokedextarget: document.getElementById("screen-pokedextarget"),
     pokedextargetVictory: document.getElementById("screen-pokedextarget-victory"),
+    statmax: document.getElementById("screen-statmax"),
+    statmaxVictory: document.getElementById("screen-statmax-victory"),
   };
   var modalRoot = document.getElementById("modalRoot");
   var connectionBanner = document.getElementById("connectionBanner");
@@ -43,6 +45,17 @@
     normal: { label: "Grille normale", desc: "48 Pokémon tirés au hasard" },
     mega: { label: "Méga grille", desc: "Tous les Pokémon des générations choisies" },
   };
+
+  // ---------- Mode La Statistique la plus haute ----------
+  var STAT_LABELS_FR = {
+    hp: "PV",
+    attack: "Attaque",
+    defense: "Défense",
+    spAttack: "Att. Spé.",
+    spDefense: "Déf. Spé.",
+    speed: "Vitesse",
+  };
+  var STAT_KEYS_ORDER = ["hp", "attack", "defense", "spAttack", "spDefense", "speed"];
 
   // ---------- État local ----------
   var myPlayerNum = null;
@@ -137,6 +150,21 @@
     results: null,
   };
   var pdtSelectedPokemon = null; // {id,name} choisi via la recherche (sous-mode "number")
+
+  // ---------- État local Mode La Statistique la plus haute ----------
+  var smState = {
+    round: 0,
+    totalRounds: 0,
+    totals: {},
+    roundOver: false,
+    mySubmitted: false,
+    myStatKey: null,
+    myCorrect: null,
+    submittedCount: 0,
+    participantsCount: 2,
+    pokemon: null,
+    results: null,
+  };
 
   var pgLastRenderedRound = null; // sert à ne redessiner le canevas que sur un changement de manche
   var pgTool = "pen";
@@ -243,6 +271,20 @@
     pdtSelectedPokemon = null;
   }
 
+  function resetSmState() {
+    smState.round = 0;
+    smState.totalRounds = 0;
+    smState.totals = {};
+    smState.roundOver = false;
+    smState.mySubmitted = false;
+    smState.myStatKey = null;
+    smState.myCorrect = null;
+    smState.submittedCount = 0;
+    smState.participantsCount = 2;
+    smState.pokemon = null;
+    smState.results = null;
+  }
+
   function resetLocalState() {
     myPlayerNum = null;
     roomCode = null;
@@ -260,6 +302,7 @@
     resetDmState();
     resetPgState();
     resetPdtState();
+    resetSmState();
   }
 
   function resetRoundState() {
@@ -274,6 +317,7 @@
     resetDmState();
     resetPgState();
     resetPdtState();
+    resetSmState();
   }
 
   // ---------- Sélection du mode de jeu (écran Créer) ----------
@@ -284,16 +328,19 @@
     document.getElementById("modeCardDevinmon").classList.toggle("checked", m === "devinmon");
     document.getElementById("modeCardPictionary").classList.toggle("checked", m === "pictionary");
     document.getElementById("modeCardPokedextarget").classList.toggle("checked", m === "pokedextarget");
+    document.getElementById("modeCardStatmax").classList.toggle("checked", m === "statmax");
     var picker = document.getElementById("devinmonPlayerCountPicker");
     var hint = document.getElementById("playerCountPickerHint");
-    if (m === "devinmon" || m === "pictionary" || m === "pokedextarget") {
+    if (m === "devinmon" || m === "pictionary" || m === "pokedextarget" || m === "statmax") {
       picker.classList.remove("hidden");
       hint.textContent =
         m === "devinmon"
           ? "De 2 à 6 joueurs. Chacun sera le Guide exactement 2 fois pendant la partie."
           : m === "pictionary"
           ? "De 2 à 6 joueurs. Chacun sera le Dessinateur exactement 2 fois pendant la partie."
-          : "De 2 à 6 joueurs. Chacun joue exactement 2 manches pendant la partie.";
+          : m === "pokedextarget"
+          ? "De 2 à 6 joueurs. Chacun joue exactement 2 manches pendant la partie."
+          : "De 2 à 6 joueurs. Tout le monde répond à chaque manche, en même temps.";
       buildDevinmonPlayerCountPicker();
     } else {
       picker.classList.add("hidden");
@@ -320,6 +367,9 @@
   });
   document.getElementById("modeCardPokedextarget").addEventListener("click", function () {
     setCreateMode("pokedextarget");
+  });
+  document.getElementById("modeCardStatmax").addEventListener("click", function () {
+    setCreateMode("statmax");
   });
 
   // ---------- Sélecteur du sens du jeu Pokédex Target (Numéro <-> Image) ----------
@@ -390,7 +440,7 @@
     var name = document.getElementById("createName").value.trim();
     if (!name) name = "Joueur 1";
     var payload = { name: name, mode: selectedCreateMode };
-    if (selectedCreateMode === "devinmon" || selectedCreateMode === "pictionary" || selectedCreateMode === "pokedextarget") {
+    if (selectedCreateMode === "devinmon" || selectedCreateMode === "pictionary" || selectedCreateMode === "pokedextarget" || selectedCreateMode === "statmax") {
       payload.maxPlayers = selectedDevinmonPlayerCount;
     }
     socket.emit("create_room", payload);
@@ -615,6 +665,7 @@
     var dmHintHost = document.getElementById("dmModeHintHost");
     var pgHintHost = document.getElementById("pgModeHintHost");
     var pdtHintHost = document.getElementById("pdtModeHintHost");
+    var smHintHost = document.getElementById("smModeHintHost");
     var guestInfo = document.getElementById("guestGenInfo");
     var startBtn = document.getElementById("btnStartGame");
     var waitMsg = document.getElementById("waitingForHostMsg");
@@ -623,6 +674,7 @@
     document.getElementById("dmHintTimes").textContent = timesEach;
     document.getElementById("pgHintTimes").textContent = timesEach;
     document.getElementById("pdtHintTimes").textContent = timesEach;
+    document.getElementById("smHintRounds").textContent = room.totalRounds || 10;
 
     if (isHost) {
       hostPicker.classList.remove("hidden");
@@ -642,6 +694,7 @@
         dmHintHost.classList.add("hidden");
         pgHintHost.classList.add("hidden");
         pdtHintHost.classList.add("hidden");
+        smHintHost.classList.add("hidden");
       } else if (roomMode === "devinmon") {
         hostGridModePicker.classList.add("hidden");
         hostPdtSubModePicker.classList.add("hidden");
@@ -649,6 +702,7 @@
         dmHintHost.classList.remove("hidden");
         pgHintHost.classList.add("hidden");
         pdtHintHost.classList.add("hidden");
+        smHintHost.classList.add("hidden");
       } else if (roomMode === "pictionary") {
         hostGridModePicker.classList.add("hidden");
         hostPdtSubModePicker.classList.add("hidden");
@@ -656,6 +710,7 @@
         dmHintHost.classList.add("hidden");
         pgHintHost.classList.remove("hidden");
         pdtHintHost.classList.add("hidden");
+        smHintHost.classList.add("hidden");
       } else if (roomMode === "pokedextarget") {
         hostGridModePicker.classList.add("hidden");
         hostPdtSubModePicker.classList.remove("hidden");
@@ -663,9 +718,18 @@
         dmHintHost.classList.add("hidden");
         pgHintHost.classList.add("hidden");
         pdtHintHost.classList.remove("hidden");
+        smHintHost.classList.add("hidden");
         buildPdtSubModePicker("pdtSubModeOptionsWaiting", function (key) {
           socket.emit("set_pdt_submode", { code: roomCode, subMode: key });
         });
+      } else if (roomMode === "statmax") {
+        hostGridModePicker.classList.add("hidden");
+        hostPdtSubModePicker.classList.add("hidden");
+        dcHintHost.classList.add("hidden");
+        dmHintHost.classList.add("hidden");
+        pgHintHost.classList.add("hidden");
+        pdtHintHost.classList.add("hidden");
+        smHintHost.classList.remove("hidden");
       } else {
         hostGridModePicker.classList.remove("hidden");
         hostPdtSubModePicker.classList.add("hidden");
@@ -673,6 +737,7 @@
         dmHintHost.classList.add("hidden");
         pgHintHost.classList.add("hidden");
         pdtHintHost.classList.add("hidden");
+        smHintHost.classList.add("hidden");
         buildGridModePicker();
       }
       var canStart = filledCount >= 2 && connectedCount === filledCount;
@@ -687,6 +752,8 @@
           ? "Démarrer la partie de dessin"
           : roomMode === "pokedextarget"
           ? "Démarrer le Pokédex Target"
+          : roomMode === "statmax"
+          ? "Démarrer La Stat la plus haute"
           : "Démarrer la partie";
       waitMsg.classList.add("hidden");
     } else {
@@ -698,6 +765,7 @@
       dmHintHost.classList.add("hidden");
       pgHintHost.classList.add("hidden");
       pdtHintHost.classList.add("hidden");
+      smHintHost.classList.add("hidden");
       guestInfo.classList.remove("hidden");
       var gridModeInfo = GRID_MODE_INFO[room.gridMode] || GRID_MODE_INFO.normal;
       var pdtSubModeInfo = PDT_SUBMODE_INFO[room.pdtSubMode] || PDT_SUBMODE_INFO.number;
@@ -710,6 +778,8 @@
           ? "Mode Dessine-moi un Pokémon"
           : roomMode === "pokedextarget"
           ? "Mode Pokédex Target"
+          : roomMode === "statmax"
+          ? "Mode La Stat la plus haute"
           : "Mode Qui est-ce ?";
       var modeTag = '<span class="tag">' + modeLabel + "</span><br>";
       guestInfo.innerHTML =
@@ -775,6 +845,9 @@
     }
     if (screens.pokedextargetVictory.classList.contains("hidden") === false) {
       updateDmReplayStatus(room, "pdtReplayStatus");
+    }
+    if (screens.statmaxVictory.classList.contains("hidden") === false) {
+      updateDmReplayStatus(room, "smReplayStatus");
     }
   });
 
@@ -2808,6 +2881,197 @@
     socket.emit("replay_vote", { code: roomCode });
   });
 
+  // =====================================================================
+  // =============== MODE LA STATISTIQUE LA PLUS HAUTE — CLIENT ==========
+  // =====================================================================
+
+  function smPlayerName(playerNum) {
+    var p = roomPlayersCache && roomPlayersCache[playerNum];
+    return p ? p.name : "Joueur " + playerNum;
+  }
+
+  function smStatBarClass(key) {
+    return "sm-bar-" + key;
+  }
+
+  function applySmStateData(data) {
+    smState.round = data.round;
+    smState.totalRounds = data.totalRounds;
+    smState.totals = data.totals || {};
+    smState.roundOver = !!data.roundOver;
+    smState.mySubmitted = !!data.mySubmitted;
+    smState.myStatKey = data.myStatKey || null;
+    smState.myCorrect = data.myCorrect;
+    smState.submittedCount = data.submittedCount || 0;
+    smState.participantsCount = data.participantsCount || 2;
+    smState.pokemon = data.pokemon || null;
+    smState.results = data.results || null;
+    renderSmScreen();
+  }
+
+  function renderSmScreen() {
+    document.getElementById("smRoundNum").textContent = smState.round;
+    document.getElementById("smTotalRounds").textContent = smState.totalRounds;
+
+    var scoreboard = document.getElementById("smScoreboard");
+    scoreboard.innerHTML = "";
+    var nums = Object.keys(smState.totals).map(Number).sort(function (a, b) {
+      return (smState.totals[b] || 0) - (smState.totals[a] || 0);
+    });
+    nums.forEach(function (n) {
+      var box = document.createElement("div");
+      box.className = "dm-score-box" + (n === myPlayerNum ? " dm-score-guide" : "");
+      box.innerHTML =
+        '<span class="dm-score-name">' + smPlayerName(n) + (n === myPlayerNum ? " (toi)" : "") + "</span>" +
+        '<span class="dm-score-val">' + (smState.totals[n] || 0) + "</span>";
+      scoreboard.appendChild(box);
+    });
+
+    if (smState.pokemon) {
+      document.getElementById("smPokemonImg").src = spriteUrl(smState.pokemon.id);
+      document.getElementById("smPokemonName").textContent = smState.pokemon.name;
+    }
+
+    var statBtns = document.querySelectorAll("#smStatGrid .sm-stat-btn");
+    var waitingMsg = document.getElementById("smWaitingMsg");
+    var revealPanel = document.getElementById("smRevealPanel");
+
+    statBtns.forEach(function (btn) {
+      btn.classList.remove("sm-stat-selected", "sm-stat-correct", "sm-stat-wrong");
+      btn.disabled = smState.mySubmitted || smState.roundOver;
+    });
+
+    if (!smState.roundOver) {
+      revealPanel.classList.add("hidden");
+      if (smState.mySubmitted) {
+        waitingMsg.classList.remove("hidden");
+        document.getElementById("smSubmittedCount").textContent = smState.submittedCount;
+        document.getElementById("smParticipantsCount").textContent = smState.participantsCount;
+        var selectedBtn = document.querySelector('#smStatGrid .sm-stat-btn[data-stat="' + smState.myStatKey + '"]');
+        if (selectedBtn) selectedBtn.classList.add("sm-stat-selected");
+      } else {
+        waitingMsg.classList.add("hidden");
+      }
+    } else {
+      waitingMsg.classList.add("hidden");
+      var results = smState.results;
+      if (results) {
+        var bestKeys = results.bestKeys || [];
+        statBtns.forEach(function (btn) {
+          var key = btn.dataset.stat;
+          if (bestKeys.indexOf(key) !== -1) btn.classList.add("sm-stat-correct");
+          else if (key === smState.myStatKey) btn.classList.add("sm-stat-wrong");
+        });
+
+        var barsEl = document.getElementById("smStatBars");
+        barsEl.innerHTML = "";
+        var maxStatValue = 255;
+        STAT_KEYS_ORDER.forEach(function (key) {
+          var val = results.stats ? results.stats[key] : 0;
+          var isBest = bestKeys.indexOf(key) !== -1;
+          var row = document.createElement("div");
+          row.className = "sm-stat-bar-row" + (isBest ? " sm-stat-bar-best" : "");
+          row.innerHTML =
+            '<span class="sm-stat-bar-label">' + STAT_LABELS_FR[key] + "</span>" +
+            '<div class="sm-stat-bar-track"><div class="sm-stat-bar-fill ' + smStatBarClass(key) + '" style="width:' + Math.round((val / maxStatValue) * 100) + '%"></div></div>' +
+            '<span class="sm-stat-bar-value">' + val + "</span>";
+          barsEl.appendChild(row);
+        });
+
+        var answersList = document.getElementById("smAnswersList");
+        answersList.innerHTML = "";
+        var answersSorted = (results.answers || []).slice().sort(function (a, b) {
+          return (b.points || 0) - (a.points || 0);
+        });
+        answersSorted.forEach(function (a) {
+          var row = document.createElement("div");
+          row.className = "pdt-answer-row" + (a.correct ? " pdt-answer-best" : "");
+          var statLabel = a.statKey ? STAT_LABELS_FR[a.statKey] : "-";
+          row.innerHTML =
+            '<span class="pdt-answer-name">' + a.name + (a.playerNum === myPlayerNum ? " (toi)" : "") + "</span>" +
+            '<span class="pdt-answer-guess">' + statLabel + "</span>" +
+            '<span class="sm-answer-stat ' + (a.correct ? "sm-answer-correct" : "sm-answer-wrong") + '">' +
+            (a.correct ? "+" + (a.points || 0) : "0 pt") +
+            "</span>";
+          answersList.appendChild(row);
+        });
+      }
+      revealPanel.classList.remove("hidden");
+      document.getElementById("smRevealWaitMsg").classList.add("hidden");
+      document.getElementById("btnSmContinue").classList.remove("hidden");
+      document.getElementById("btnSmContinue").disabled = false;
+    }
+  }
+
+  document.querySelectorAll("#smStatGrid .sm-stat-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      if (smState.mySubmitted || smState.roundOver) return;
+      socket.emit("statmax_submit_guess", { code: roomCode, statKey: btn.dataset.stat });
+    });
+  });
+
+  socket.on("statmax_state", function (data) {
+    applySmStateData(data);
+    showOnly("statmax");
+  });
+
+  document.getElementById("btnSmContinue").addEventListener("click", function () {
+    document.getElementById("btnSmContinue").disabled = true;
+    socket.emit("statmax_continue", { code: roomCode });
+  });
+
+  socket.on("statmax_continue_status", function (data) {
+    if (!data.continueReady[myPlayerNum]) return;
+    var waitMsg = document.getElementById("smRevealWaitMsg");
+    waitMsg.classList.remove("hidden");
+    waitMsg.textContent = "En attente que les autres joueurs cliquent sur Manche suivante...";
+    document.getElementById("btnSmContinue").classList.add("hidden");
+  });
+
+  function smRenderFinalScores(totals) {
+    var nums = Object.keys(totals).map(Number).sort(function (a, b) {
+      return (totals[b] || 0) - (totals[a] || 0);
+    });
+    var highestScore = nums.length ? totals[nums[0]] : 0;
+    var winners = nums.filter(function (n) {
+      return totals[n] === highestScore;
+    });
+    var title;
+    if (winners.length > 1) {
+      title = "ÉGALITÉ !";
+    } else if (winners[0] === myPlayerNum) {
+      title = "TU AS GAGNÉ !";
+    } else {
+      title = smPlayerName(winners[0]) + " GAGNE !";
+    }
+    document.getElementById("smVictoryTitle").textContent = title;
+
+    var scoresEl = document.getElementById("smFinalScores");
+    scoresEl.innerHTML = "";
+    nums.forEach(function (n, idx) {
+      var row = document.createElement("div");
+      row.className = "dm-final-score-row" + (totals[n] === highestScore ? " dm-final-winner" : "");
+      row.innerHTML =
+        '<span class="dm-final-rank">#' + (idx + 1) + "</span>" +
+        '<span class="dm-final-name">' + smPlayerName(n) + (n === myPlayerNum ? " (toi)" : "") + "</span>" +
+        '<span class="dm-final-total">' + (totals[n] || 0) + "</span>";
+      scoresEl.appendChild(row);
+    });
+  }
+
+  socket.on("statmax_game_over", function (data) {
+    roomPlayersCache = data.players;
+    smRenderFinalScores(data.totals || {});
+    document.getElementById("btnSmReplay").disabled = false;
+    document.getElementById("smReplayStatus").textContent = "En attente de tous les joueurs...";
+    showOnly("statmaxVictory");
+  });
+
+  document.getElementById("btnSmReplay").addEventListener("click", function () {
+    document.getElementById("btnSmReplay").disabled = true;
+    socket.emit("replay_vote", { code: roomCode });
+  });
+
   // ---------- Reconnexion / resynchronisation ----------
   socket.on("resync", function (data) {
     roomMode = data.mode || "quiestce";
@@ -2904,6 +3168,13 @@
       var pdt = data.pokedextarget || { totals: {} };
       pdtRenderFinalScores(pdt.totals || {});
       showOnly("pokedextargetVictory");
+    } else if (data.status === "statmax" && data.statmax) {
+      applySmStateData(data.statmax);
+      showOnly("statmax");
+    } else if (data.status === "statmax_over") {
+      var sm = data.statmax || { totals: {} };
+      smRenderFinalScores(sm.totals || {});
+      showOnly("statmaxVictory");
     }
   });
 

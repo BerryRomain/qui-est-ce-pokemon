@@ -11,8 +11,9 @@ const GRID_SIZE = 48;
 const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sans caractères ambigus (0,O,1,I)
 const ROOM_TTL_MS = 1000 * 60 * 60 * 4; // 4h d'inactivité -> nettoyage
 const GRID_MODES = ["normal", "mega"];
-const GAME_MODES = ["quiestce", "demicercle", "devinmon", "pictionary", "pokedextarget"];
+const GAME_MODES = ["quiestce", "demicercle", "devinmon", "pictionary", "pokedextarget", "statmax"];
 const DEMI_CERCLE_DEFAULT_ROUNDS = 10;
+const STATMAX_DEFAULT_ROUNDS = 10;
 // Plafond absolu du nombre de manches proposé dans le sélecteur du lobby.
 const ROUNDS_CEILING = 30;
 
@@ -41,7 +42,7 @@ function lcm(a, b) {
 //   nombre pair (règle globale demandée), donc pas = ppcm(joueurs, 2).
 //   Exemple : 3 joueurs -> pas = 6 (6, 12, 18, 24, 30 manches possibles).
 function roundsStepForMode(mode, playerCount) {
-  if (mode === "demicercle") return 2;
+  if (mode === "demicercle" || mode === "statmax") return 2;
   return lcm(Math.max(1, playerCount), 2);
 }
 
@@ -50,6 +51,7 @@ function roundsStepForMode(mode, playerCount) {
 // rotation de rôle).
 function defaultTotalRounds(mode, playerCount) {
   if (mode === "demicercle") return DEMI_CERCLE_DEFAULT_ROUNDS;
+  if (mode === "statmax") return STATMAX_DEFAULT_ROUNDS;
   return playerCount * 2;
 }
 
@@ -95,6 +97,16 @@ const PICTIONARY_RANK_POINTS = [100, 80, 65, 55, 45, 35];
 const PICTIONARY_MIN_POINTS = 20;
 // Points bonus gagnés par le dessinateur pour chaque joueur qui trouve son dessin
 const PICTIONARY_DRAWER_POINTS_PER_FINDER = 20;
+
+const STATMAX_MIN_PLAYERS = 2;
+const STATMAX_MAX_PLAYERS = 6;
+// Les 6 statistiques de base, dans l'ordre d'affichage (identique à Poképedia).
+const STAT_KEYS = ["hp", "attack", "defense", "spAttack", "spDefense", "speed"];
+// Barème de points par rang de réponse correcte : on réutilise exactement le
+// même barème que le mode Dessine-moi un Pokémon (1er trouveur = plus de
+// points, etc.), pour une cohérence de scoring entre les modes de rapidité.
+const RANK_POINTS = PICTIONARY_RANK_POINTS;
+const RANK_MIN_POINTS = PICTIONARY_MIN_POINTS;
 
 // Zones de score du mode Demi-Cercle : distance max (sur une échelle 0-100)
 // pour obtenir 4, 3 ou 2 points ; au-delà -> 0 point.
@@ -614,6 +626,91 @@ function emitPdtStateToRoom(room) {
   });
 }
 
+// =====================================================================
+// ============ MODE LA STATISTIQUE LA PLUS HAUTE =====================
+// =====================================================================
+// À chaque manche, un Pokémon (artwork + nom) est affiché à tous les
+// joueurs en même temps. Chacun doit cliquer, parmi les 6 statistiques de
+// base, celle qui est la plus élevée pour ce Pokémon. En cas d'égalité
+// parfaite entre plusieurs stats, chacune d'elles est considérée comme une
+// réponse correcte. Les points sont attribués selon l'ordre d'arrivée des
+// bonnes réponses (même barème que le mode Dessine-moi un Pokémon).
+
+// Retourne la ou les clés de statistiques à égalité au maximum.
+function statmaxBestKeys(stats) {
+  const values = STAT_KEYS.map((k) => stats[k]);
+  const max = Math.max.apply(null, values);
+  return STAT_KEYS.filter((k) => stats[k] === max);
+}
+
+function startStatmaxRound(room) {
+  const sm = room.statmax;
+  sm.round += 1;
+
+  const pool = buildPool(room.generations).filter((p) => sm.usedIds.indexOf(p.id) === -1);
+  const source = pool.length ? pool : buildPool(room.generations);
+  const poke = shuffle(source)[0];
+  sm.usedIds.push(poke.id);
+  sm.secret = poke;
+  sm.answers = {};
+  sm.submitted = {};
+  sm.participants.forEach((n) => (sm.submitted[n] = false));
+  sm.correctOrder = [];
+  sm.continueReady = {};
+  sm.roundOver = false;
+}
+
+// Construit le payload envoyé à un joueur donné. Contrairement au mode
+// Pokédex Target, le Pokémon (image + nom) est visible de tous dès le début
+// de la manche : seules les VALEURS chiffrées des statistiques restent
+// cachées jusqu'à ce que la manche soit terminée (pour ne pas révéler la
+// réponse avant que tout le monde ait voté).
+function statmaxPayloadFor(room, playerNum) {
+  const sm = room.statmax;
+  const submittedCount = sm.participants.filter((n) => sm.submitted[n]).length;
+  const myAnswer = sm.answers[playerNum] || null;
+  const payload = {
+    round: sm.round,
+    totalRounds: sm.totalRounds,
+    totals: sm.totals,
+    roundOver: sm.roundOver,
+    mySubmitted: !!sm.submitted[playerNum],
+    myStatKey: myAnswer ? myAnswer.statKey : null,
+    myCorrect: myAnswer ? myAnswer.correct : null,
+    submittedCount: submittedCount,
+    participantsCount: sm.participants.length,
+    pokemon: { id: sm.secret.id, name: sm.secret.name },
+    results: null,
+  };
+  if (sm.roundOver) {
+    payload.results = {
+      stats: sm.secret.stats,
+      bestKeys: statmaxBestKeys(sm.secret.stats),
+      answers: sm.participants.map((n) => {
+        const a = sm.answers[n] || null;
+        return {
+          playerNum: n,
+          name: room.players[n] ? room.players[n].name : "Joueur " + n,
+          statKey: a ? a.statKey : null,
+          correct: a ? a.correct : false,
+          points: a ? a.points : 0,
+        };
+      }),
+    };
+  }
+  return payload;
+}
+
+function emitStatmaxStateToRoom(room) {
+  const sm = room.statmax;
+  sm.participants.forEach((n) => {
+    const p = room.players[n];
+    if (p && p.socketId) {
+      io.to(p.socketId).emit("statmax_state", statmaxPayloadFor(room, n));
+    }
+  });
+}
+
 io.on("connection", (socket) => {
   socket.on("create_room", ({ name, mode, maxPlayers }) => {
     const code = makeRoomCode();
@@ -628,6 +725,9 @@ io.on("connection", (socket) => {
     } else if (cleanMode === "pokedextarget") {
       cap = Math.round(Number(maxPlayers)) || 2;
       cap = Math.max(POKEDEXTARGET_MIN_PLAYERS, Math.min(POKEDEXTARGET_MAX_PLAYERS, cap));
+    } else if (cleanMode === "statmax") {
+      cap = Math.round(Number(maxPlayers)) || 2;
+      cap = Math.max(STATMAX_MIN_PLAYERS, Math.min(STATMAX_MAX_PLAYERS, cap));
     }
     const room = {
       code,
@@ -650,6 +750,7 @@ io.on("connection", (socket) => {
       devinmon: null,
       pictionary: null,
       pokedextarget: null,
+      statmax: null,
       lastActivity: Date.now(),
     };
     for (let n = 2; n <= cap; n++) room.players[n] = null;
@@ -708,7 +809,9 @@ io.on("connection", (socket) => {
       room.status === "pictionary" ||
       room.status === "pictionary_over" ||
       room.status === "pokedextarget" ||
-      room.status === "pokedextarget_over"
+      room.status === "pokedextarget_over" ||
+      room.status === "statmax" ||
+      room.status === "statmax_over"
     ) {
       socket.emit("resync", buildResyncPayload(room, playerNum));
     }
@@ -882,6 +985,39 @@ io.on("connection", (socket) => {
       startPdtRound(room);
       touch(room);
       emitPdtStateToRoom(room);
+      return;
+    }
+
+    // ---- Branche Mode La Statistique la plus haute ----
+    if (room.mode === "statmax") {
+      const pool = buildPool(room.generations);
+      ensureValidTotalRounds(room);
+      const totalRounds = room.totalRounds;
+      if (pool.length < totalRounds) {
+        socket.emit("error_message", {
+          message: "Sélectionne plus de générations (au moins " + totalRounds + " Pokémon nécessaires).",
+        });
+        return;
+      }
+      room.status = "statmax";
+      occupiedPlayerNums(room).forEach((n) => (room.players[n].replayReady = false));
+      room.statmax = {
+        totalRounds: totalRounds,
+        round: 0,
+        participants: connected.slice(),
+        secret: null,
+        answers: {},
+        submitted: {},
+        correctOrder: [],
+        totals: {},
+        continueReady: {},
+        usedIds: [],
+        roundOver: false,
+      };
+      connected.forEach((n) => (room.statmax.totals[n] = 0));
+      startStatmaxRound(room);
+      touch(room);
+      emitStatmaxStateToRoom(room);
       return;
     }
 
@@ -1292,6 +1428,64 @@ io.on("connection", (socket) => {
   });
 
   // =====================================================================
+  // ============ MODE LA STATISTIQUE LA PLUS HAUTE (sockets) ============
+  // =====================================================================
+
+  socket.on("statmax_submit_guess", ({ code, statKey }) => {
+    const room = rooms.get(code);
+    const info = socketToRoom.get(socket.id);
+    if (!room || !info || room.status !== "statmax") return;
+    const sm = room.statmax;
+    if (!sm || sm.roundOver) return;
+    const playerNum = info.playerNum;
+    if (sm.participants.indexOf(playerNum) === -1) return;
+    if (sm.submitted[playerNum]) return;
+    if (STAT_KEYS.indexOf(statKey) === -1) return;
+
+    const bestKeys = statmaxBestKeys(sm.secret.stats);
+    const correct = bestKeys.indexOf(statKey) !== -1;
+    let points = 0;
+    if (correct) {
+      const rank = sm.correctOrder.length + 1;
+      const basePoints = RANK_POINTS[Math.min(rank - 1, RANK_POINTS.length - 1)];
+      points = Math.max(RANK_MIN_POINTS, basePoints);
+      sm.correctOrder.push(playerNum);
+    }
+    sm.answers[playerNum] = { statKey: statKey, correct: correct, points: points };
+    sm.submitted[playerNum] = true;
+    sm.totals[playerNum] = (sm.totals[playerNum] || 0) + points;
+    touch(room);
+
+    const allSubmitted = sm.participants.every((n) => sm.submitted[n]);
+    if (allSubmitted) sm.roundOver = true;
+    emitStatmaxStateToRoom(room);
+  });
+
+  // ---------- Passage à la manche suivante (vote unanime) ----------
+  socket.on("statmax_continue", ({ code }) => {
+    const room = rooms.get(code);
+    const info = socketToRoom.get(socket.id);
+    if (!room || !info || room.status !== "statmax") return;
+    const sm = room.statmax;
+    if (!sm || !sm.roundOver) return;
+    sm.continueReady[info.playerNum] = true;
+    touch(room);
+
+    const allReady = sm.participants.every((n) => sm.continueReady[n]);
+    if (allReady) {
+      if (sm.round >= sm.totalRounds) {
+        room.status = "statmax_over";
+        io.to(code).emit("statmax_game_over", { totals: sm.totals, players: publicPlayers(room) });
+      } else {
+        startStatmaxRound(room);
+        emitStatmaxStateToRoom(room);
+      }
+    } else {
+      io.to(code).emit("statmax_continue_status", { continueReady: sm.continueReady });
+    }
+  });
+
+  // =====================================================================
   // ============ MODE DESSINE-MOI UN POKÉMON (Pictionary) ==============
   // =====================================================================
 
@@ -1450,7 +1644,8 @@ io.on("connection", (socket) => {
       room.status !== "demicercle_over" &&
       room.status !== "devinmon_over" &&
       room.status !== "pictionary_over" &&
-      room.status !== "pokedextarget_over"
+      room.status !== "pokedextarget_over" &&
+      room.status !== "statmax_over"
     )
       return;
     room.players[info.playerNum].replayReady = true;
@@ -1470,6 +1665,7 @@ io.on("connection", (socket) => {
       room.devinmon = null;
       room.pictionary = null;
       room.pokedextarget = null;
+      room.statmax = null;
       room.status = "lobby";
       room.currentPlayer = 1;
       room.guessMode = false;
@@ -1542,6 +1738,7 @@ function buildResyncPayload(room, forPlayerNum) {
     devinmon: null,
     pictionary: null,
     pokedextarget: null,
+    statmax: null,
   };
   if (room.mode === "demicercle" && room.demiCercle) {
     payload.demiCercle = demiCerclePayloadFor(room, forPlayerNum);
@@ -1554,6 +1751,9 @@ function buildResyncPayload(room, forPlayerNum) {
   }
   if (room.mode === "pokedextarget" && room.pokedextarget) {
     payload.pokedextarget = pdtPayloadFor(room, forPlayerNum);
+  }
+  if (room.mode === "statmax" && room.statmax) {
+    payload.statmax = statmaxPayloadFor(room, forPlayerNum);
   }
   return payload;
 }

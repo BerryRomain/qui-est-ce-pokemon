@@ -1898,3 +1898,127 @@ html,body{
   .pg-layout{ grid-template-columns:1fr; }
   .pg-chat-feed{ height:220px; }
 }
+
+/* ===================================================================== */
+/* ============ MODE LA STATISTIQUE LA PLUS HAUTE ======================= */
+/* ===================================================================== */
+
+.sm-pokemon-panel{
+  background:#fff;
+  border:4px solid var(--pd-dark);
+  border-radius:16px;
+  padding:18px 20px;
+  margin:0 auto 18px;
+  max-width:420px;
+  text-align:center;
+}
+.sm-pokemon-panel img{
+  width:150px;
+  height:150px;
+  object-fit:contain;
+  display:block;
+  margin:0 auto 6px;
+}
+.sm-pokemon-panel .dm-secret-name{ font-size:1.3rem; }
+
+.sm-stat-grid{
+  display:grid;
+  grid-template-columns:repeat(3, 1fr);
+  gap:12px;
+  max-width:600px;
+  margin:0 auto 16px;
+}
+.sm-stat-btn{
+  font-family:'Baloo 2', cursive;
+  font-weight:800;
+  font-size:0.95rem;
+  color:var(--pd-dark);
+  background:var(--pd-cream);
+  border:3px solid var(--pd-dark);
+  border-radius:14px;
+  padding:16px 10px;
+  cursor:pointer;
+  transition:transform 0.1s ease, box-shadow 0.1s ease, background 0.15s ease;
+}
+.sm-stat-btn:hover:not(:disabled){
+  transform:translateY(-2px);
+  box-shadow:0 4px 8px rgba(0,0,0,0.2);
+  background:#fff;
+}
+.sm-stat-btn:disabled{ cursor:default; opacity:0.75; }
+.sm-stat-btn.sm-stat-selected{
+  border-color:var(--pd-blue);
+  box-shadow:0 0 0 3px var(--pd-blue) inset;
+  background:#e5f2ff;
+}
+.sm-stat-btn.sm-stat-correct{
+  border-color:#1e9e52;
+  box-shadow:0 0 0 3px #1e9e52 inset;
+  background:#e5fbee;
+  color:#1e9e52;
+}
+.sm-stat-btn.sm-stat-wrong{
+  border-color:var(--pd-red-dark);
+  box-shadow:0 0 0 3px var(--pd-red-dark) inset;
+  background:#fdeceb;
+  color:var(--pd-red-dark);
+}
+
+.sm-reveal-panel{
+  margin-top:8px;
+  text-align:center;
+  background:#fff;
+  border:4px solid var(--pd-dark);
+  border-radius:16px;
+  padding:18px;
+}
+
+.sm-stat-bars{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  max-width:480px;
+  margin:0 auto 18px;
+}
+.sm-stat-bar-row{
+  display:grid;
+  grid-template-columns:120px 1fr 42px;
+  align-items:center;
+  gap:8px;
+  text-align:left;
+}
+.sm-stat-bar-row.sm-stat-bar-best .sm-stat-bar-label{ color:var(--pd-red); }
+.sm-stat-bar-label{ font-weight:800; font-size:0.8rem; }
+.sm-stat-bar-track{
+  background:#eee;
+  border:2px solid var(--pd-dark);
+  border-radius:8px;
+  height:14px;
+  overflow:hidden;
+}
+.sm-stat-bar-fill{
+  height:100%;
+  border-radius:6px 0 0 6px;
+}
+.sm-stat-bar-fill.sm-bar-hp{ background:#f75454; }
+.sm-stat-bar-fill.sm-bar-attack{ background:#f5a742; }
+.sm-stat-bar-fill.sm-bar-defense{ background:#f7d443; }
+.sm-stat-bar-fill.sm-bar-spAttack{ background:#4f9bf7; }
+.sm-stat-bar-fill.sm-bar-spDefense{ background:#4fcf7a; }
+.sm-stat-bar-fill.sm-bar-speed{ background:#f74fb0; }
+.sm-stat-bar-value{ font-weight:800; font-size:0.85rem; text-align:right; }
+
+.sm-answer-stat{
+  font-weight:800;
+  font-size:0.85rem;
+  padding:4px 10px;
+  border-radius:8px;
+  white-space:nowrap;
+}
+.sm-answer-correct{ background:#e5fbee; color:#1e9e52; }
+.sm-answer-wrong{ background:#fdeceb; color:var(--pd-red-dark); }
+
+@media (max-width:640px){
+  .sm-stat-grid{ grid-template-columns:repeat(2, 1fr); }
+  .sm-stat-bar-row{ grid-template-columns:96px 1fr 36px; }
+}

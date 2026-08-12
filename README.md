@@ -118,7 +118,27 @@ le mode **Dessine-moi un Pokémon** à la création du salon :
 - Fin de partie : classement final (le score le plus haut gagne), avec le
   même système de revanche à deux clics que les autres modes.
 
-## Générations disponibles
+## Mode "La Statistique la plus haute"
+
+Nouveau mode rapide, de 2 à 6 joueurs :
+
+- À chaque manche, un Pokémon (artwork + nom) s'affiche pour tous les
+  joueurs en même temps. Chacun doit cliquer, parmi les 6 statistiques de
+  base (PV, Attaque, Défense, Attaque Spéciale, Défense Spéciale,
+  Vitesse), celle qui est la plus élevée pour ce Pokémon.
+- Le premier à trouver la bonne réponse marque le plus de points (barème
+  100 / 80 / 65 / 55 / 45 / 35, minimum 20 par bonne réponse). En cas
+  d'égalité parfaite entre plusieurs statistiques, chacune d'elles est
+  acceptée comme réponse correcte.
+- Une fois que tout le monde a répondu, les vraies valeurs chiffrées sont
+  révélées avec des barres colorées façon Poképedia, ainsi que la réponse
+  de chaque joueur et les points gagnés.
+- Le nombre de manches est configurable dans le salon d'attente (nombres
+  pairs uniquement : 2, 4, 6, 8...).
+- Le classement final (score le plus haut gagne) utilise le même système
+  de revanche à deux clics que les autres modes.
+
+
 
 Le fichier `data/pokemon_by_gen.json` contient déjà les 9 générations
 (1 à 9, soit les 1025 Pokémon, noms officiels en français) :
