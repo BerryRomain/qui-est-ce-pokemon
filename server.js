@@ -12,7 +12,77 @@ const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sans caractères 
 const ROOM_TTL_MS = 1000 * 60 * 60 * 4; // 4h d'inactivité -> nettoyage
 const GRID_MODES = ["normal", "mega"];
 const GAME_MODES = ["quiestce", "demicercle", "devinmon", "pictionary", "pokedextarget"];
-const DEMI_CERCLE_ROUNDS = 10;
+const DEMI_CERCLE_DEFAULT_ROUNDS = 10;
+// Plafond absolu du nombre de manches proposé dans le sélecteur du lobby.
+const ROUNDS_CEILING = 30;
+
+function gcd(a, b) {
+  a = Math.abs(a);
+  b = Math.abs(b);
+  while (b) {
+    const t = b;
+    b = a % b;
+    a = t;
+  }
+  return a || 1;
+}
+
+function lcm(a, b) {
+  return (a * b) / gcd(a, b);
+}
+
+// Pas minimal valide pour le nombre total de manches, selon le mode et le
+// nombre de joueurs participants :
+// - Demi-Cercle : le rôle alterne à CHAQUE manche entre les 2 joueurs, donc
+//   un nombre pair suffit à garantir l'équité (pas = 2).
+// - Devin'Mon / Dessine-moi un Pokémon / Pokédex Target : le rôle spécial
+//   tourne entre tous les participants ; il faut à la fois un multiple du
+//   nombre de joueurs (pour que chacun joue le même nombre de fois) ET un
+//   nombre pair (règle globale demandée), donc pas = ppcm(joueurs, 2).
+//   Exemple : 3 joueurs -> pas = 6 (6, 12, 18, 24, 30 manches possibles).
+function roundsStepForMode(mode, playerCount) {
+  if (mode === "demicercle") return 2;
+  return lcm(Math.max(1, playerCount), 2);
+}
+
+// Valeur de manches sélectionnée par défaut : conserve le comportement
+// historique (10 pour Demi-Cercle, 2 manches par joueur pour les modes à
+// rotation de rôle).
+function defaultTotalRounds(mode, playerCount) {
+  if (mode === "demicercle") return DEMI_CERCLE_DEFAULT_ROUNDS;
+  return playerCount * 2;
+}
+
+// Construit la liste des valeurs de manches valides (multiples du pas),
+// jusqu'au plafond ROUNDS_CEILING.
+function buildRoundsOptions(mode, playerCount) {
+  const step = roundsStepForMode(mode, playerCount);
+  const options = [];
+  for (let v = step; v <= ROUNDS_CEILING; v += step) options.push(v);
+  if (options.length === 0) options.push(step);
+  return options;
+}
+
+// S'assure que room.totalRounds est une valeur valide compte tenu du mode et
+// du nombre de joueurs actuellement connectés ; ajuste automatiquement sinon
+// (par ex. si un joueur quitte le lobby et rend l'ancienne valeur invalide).
+// Retourne la liste des options valides pour ce mode/nombre de joueurs.
+// NB : dépend de connectedPlayerNums(), défini plus bas dans ce fichier ;
+// les fonctions JS ordinaires sont "hoistées" donc l'appel est sûr au runtime.
+function ensureValidTotalRounds(room) {
+  if (room.mode === "quiestce") {
+    room.totalRounds = null;
+    return [];
+  }
+  const playerCount = room.mode === "demicercle" ? 2 : Math.max(connectedPlayerNums(room).length, 2);
+  const options = buildRoundsOptions(room.mode, playerCount);
+  if (!room.totalRounds || options.indexOf(room.totalRounds) === -1) {
+    let fallback = defaultTotalRounds(room.mode, playerCount);
+    if (options.indexOf(fallback) === -1) fallback = options[0];
+    room.totalRounds = fallback;
+  }
+  return options;
+}
 const DEVINMON_MIN_PLAYERS = 2;
 const DEVINMON_MAX_PLAYERS = 6;
 const PICTIONARY_MIN_PLAYERS = 2;
@@ -150,6 +220,7 @@ function publicPlayers(room) {
 }
 
 function roomSummary(room) {
+  const roundsOptions = ensureValidTotalRounds(room);
   return {
     code: room.code,
     mode: room.mode,
@@ -158,6 +229,8 @@ function roomSummary(room) {
     gridMode: room.gridMode,
     pdtSubMode: room.pdtSubMode || "number",
     maxPlayers: room.maxPlayers,
+    totalRounds: room.totalRounds,
+    roundsOptions: roundsOptions,
     players: publicPlayers(room),
   };
 }
@@ -267,11 +340,11 @@ function emitDemiCercleRoundToRoom(room) {
 
 // Construit l'ordre des Guides : chaque joueur guide exactement 2 fois,
 // en évitant autant que possible deux tours consécutifs pour le même joueur.
-function buildDevinmonGuideOrder(playerNums) {
+function buildDevinmonGuideOrder(playerNums, totalRounds) {
+  const repeats = Math.max(1, Math.round((totalRounds || playerNums.length * 2) / playerNums.length));
   const pool = [];
   playerNums.forEach((n) => {
-    pool.push(n);
-    pool.push(n);
+    for (let i = 0; i < repeats; i++) pool.push(n);
   });
   let order = shuffle(pool);
   let attempts = 0;
@@ -390,8 +463,8 @@ function checkDevinmonRoundEnd(room) {
 // Construit l'ordre des Dessinateurs : chaque joueur dessine exactement 2
 // fois, en évitant autant que possible deux tours consécutifs pour le même
 // joueur. Réutilise le même principe que le mode Devin'Mon.
-function buildPictionaryDrawOrder(playerNums) {
-  return buildDevinmonGuideOrder(playerNums);
+function buildPictionaryDrawOrder(playerNums, totalRounds) {
+  return buildDevinmonGuideOrder(playerNums, totalRounds);
 }
 
 function startPictionaryRound(room) {
@@ -563,6 +636,7 @@ io.on("connection", (socket) => {
       gridMode: "normal",
       pdtSubMode: "number",
       maxPlayers: cap,
+      totalRounds: null,
       status: "lobby",
       players: {
         1: { socketId: socket.id, name: (name || "Joueur 1").slice(0, 16), connected: true, secret: null, replayReady: false },
@@ -673,6 +747,26 @@ io.on("connection", (socket) => {
     io.to(code).emit("players_update", roomSummary(room));
   });
 
+  // Choix du nombre total de manches par l'hôte, dans le salon d'attente.
+  // La valeur doit obligatoirement figurer parmi les options valides pour le
+  // mode et le nombre de joueurs actuellement connectés (nombre pair, et
+  // multiple du nombre de joueurs pour les modes à rotation de rôle), sans
+  // quoi elle est ignorée côté serveur (le client ne propose de toute façon
+  // que les valeurs valides).
+  socket.on("set_total_rounds", ({ code, totalRounds }) => {
+    const room = rooms.get(code);
+    const info = socketToRoom.get(socket.id);
+    if (!room || !info || info.playerNum !== 1) return; // seul l'hôte choisit
+    if (room.mode === "quiestce") return; // pas de notion de manches dans ce mode
+    const playerCount = room.mode === "demicercle" ? 2 : Math.max(connectedPlayerNums(room).length, 2);
+    const options = buildRoundsOptions(room.mode, playerCount);
+    const val = Math.round(Number(totalRounds));
+    if (options.indexOf(val) === -1) return;
+    room.totalRounds = val;
+    touch(room);
+    io.to(code).emit("players_update", roomSummary(room));
+  });
+
   socket.on("start_game", ({ code }) => {
     const room = rooms.get(code);
     const info = socketToRoom.get(socket.id);
@@ -687,7 +781,8 @@ io.on("connection", (socket) => {
     // ---- Branche Mode Devin'Mon ----
     if (room.mode === "devinmon") {
       const pool = buildPool(room.generations);
-      const totalRounds = connected.length * 2;
+      ensureValidTotalRounds(room);
+      const totalRounds = room.totalRounds;
       if (pool.length < totalRounds) {
         socket.emit("error_message", {
           message: "Sélectionne plus de générations (au moins " + totalRounds + " Pokémon nécessaires).",
@@ -700,7 +795,7 @@ io.on("connection", (socket) => {
         totalRounds: totalRounds,
         round: 0,
         participants: connected.slice(),
-        guideOrder: buildDevinmonGuideOrder(connected),
+        guideOrder: buildDevinmonGuideOrder(connected, totalRounds),
         currentGuide: null,
         secret: null,
         clues: [],
@@ -722,7 +817,8 @@ io.on("connection", (socket) => {
     // ---- Branche Mode Dessine-moi un Pokémon (Pictionary) ----
     if (room.mode === "pictionary") {
       const pool = buildPool(room.generations);
-      const totalRounds = connected.length * 2;
+      ensureValidTotalRounds(room);
+      const totalRounds = room.totalRounds;
       if (pool.length < totalRounds) {
         socket.emit("error_message", {
           message: "Sélectionne plus de générations (au moins " + totalRounds + " Pokémon nécessaires).",
@@ -735,7 +831,7 @@ io.on("connection", (socket) => {
         totalRounds: totalRounds,
         round: 0,
         participants: connected.slice(),
-        drawOrder: buildPictionaryDrawOrder(connected),
+        drawOrder: buildPictionaryDrawOrder(connected, totalRounds),
         currentDrawer: null,
         secret: null,
         actions: [],
@@ -758,7 +854,8 @@ io.on("connection", (socket) => {
     // ---- Branche Mode Pokédex Target ----
     if (room.mode === "pokedextarget") {
       const pool = buildPool(room.generations);
-      const totalRounds = connected.length * 2;
+      ensureValidTotalRounds(room);
+      const totalRounds = room.totalRounds;
       if (pool.length < totalRounds) {
         socket.emit("error_message", {
           message: "Sélectionne plus de générations (au moins " + totalRounds + " Pokémon nécessaires).",
@@ -796,9 +893,11 @@ io.on("connection", (socket) => {
     // ---- Branche Mode Demi-Cercle ----
     if (room.mode === "demicercle") {
       const pool = buildPool(room.generations);
-      if (pool.length < DEMI_CERCLE_ROUNDS) {
+      ensureValidTotalRounds(room);
+      const dcTotalRounds = room.totalRounds;
+      if (pool.length < dcTotalRounds) {
         socket.emit("error_message", {
-          message: "Sélectionne plus de générations (au moins " + DEMI_CERCLE_ROUNDS + " Pokémon nécessaires).",
+          message: "Sélectionne plus de générations (au moins " + dcTotalRounds + " Pokémon nécessaires).",
         });
         return;
       }
@@ -807,7 +906,7 @@ io.on("connection", (socket) => {
       room.players[2].replayReady = false;
       room.demiCercle = {
         round: 0,
-        totalRounds: DEMI_CERCLE_ROUNDS,
+        totalRounds: dcTotalRounds,
         guesser: null,
         master: null,
         pokemon: null,

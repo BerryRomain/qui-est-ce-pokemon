@@ -75,7 +75,7 @@
 
       <div id="devinmonPlayerCountPicker" class="grid-mode-picker hidden">
         <h3 class="pixel" style="font-size:0.85rem;">Nombre de joueurs</h3>
-        <p class="gen-hint" id="playerCountPickerHint">De 2 à 6 joueurs. Chacun sera le Guide exactement 2 fois pendant la partie.</p>
+        <p class="gen-hint" id="playerCountPickerHint">De 2 à 6 joueurs. Le nombre de manches (ajustable ensuite dans le salon d'attente) fera jouer chacun le même nombre de fois.</p>
         <div class="grid-mode-options" id="devinmonPlayerCountOptions"></div>
       </div>
 
@@ -141,16 +141,26 @@
         <div class="grid-mode-options" id="gridModeOptions"></div>
       </div>
 
+      <div id="hostRoundsPicker" class="rounds-picker hidden">
+        <h3 class="pixel" style="font-size:0.85rem;">Nombre de manches</h3>
+        <p class="gen-hint">
+          Choisis le nombre total de manches. Pour garantir l'équité, seules les valeurs
+          faisant jouer chaque joueur le même nombre de fois sont proposées.
+        </p>
+        <select id="roundsSelect" class="rounds-select"></select>
+      </div>
+      <div id="guestRoundsInfo" class="gen-readonly hidden"></div>
+
       <div id="hostPdtSubModePicker" class="grid-mode-picker hidden">
         <h3 class="pixel" style="font-size:0.85rem;">Sens du jeu</h3>
         <p class="gen-hint">Choisis comment les joueurs devront deviner à chaque manche.</p>
         <div class="grid-mode-options" id="pdtSubModeOptionsWaiting"></div>
       </div>
 
-      <p id="dcModeHintHost" class="gen-hint dc-hint hidden">Mode Demi-Cercle : 10 Pokémon aléatoires seront tirés (un par round) parmi les générations choisies.</p>
-      <p id="dmModeHintHost" class="gen-hint dc-hint hidden">Mode Devin'Mon : chaque joueur sera le Guide 2 fois. Assure-toi d'avoir sélectionné assez de générations.</p>
-      <p id="pgModeHintHost" class="gen-hint dc-hint hidden">Mode Dessine-moi un Pokémon : chaque joueur sera le Dessinateur 2 fois. Assure-toi d'avoir sélectionné assez de générations.</p>
-      <p id="pdtModeHintHost" class="gen-hint dc-hint hidden">Mode Pokédex Target : chaque joueur joue 2 manches. Assure-toi d'avoir sélectionné assez de générations.</p>
+      <p id="dcModeHintHost" class="gen-hint dc-hint hidden">Mode Demi-Cercle : <span id="dcHintRounds">10</span> Pokémon aléatoires seront tirés (un par round) parmi les générations choisies.</p>
+      <p id="dmModeHintHost" class="gen-hint dc-hint hidden">Mode Devin'Mon : chaque joueur sera le Guide <span id="dmHintTimes">2</span> fois. Assure-toi d'avoir sélectionné assez de générations.</p>
+      <p id="pgModeHintHost" class="gen-hint dc-hint hidden">Mode Dessine-moi un Pokémon : chaque joueur sera le Dessinateur <span id="pgHintTimes">2</span> fois. Assure-toi d'avoir sélectionné assez de générations.</p>
+      <p id="pdtModeHintHost" class="gen-hint dc-hint hidden">Mode Pokédex Target : chaque joueur joue <span id="pdtHintTimes">2</span> manches. Assure-toi d'avoir sélectionné assez de générations.</p>
 
       <div id="guestGenInfo" class="gen-readonly hidden"></div>
 
@@ -392,9 +402,10 @@
       <div class="pg-canvas-col">
         <div class="pg-canvas-wrap">
           <canvas id="pgCanvas" width="700" height="500"></canvas>
-          <div class="pg-secret-hint hidden" id="pgSecretHint">
+          <div class="pg-secret-hint hidden" id="pgSecretHint" title="Cliquer pour agrandir">
             <img id="pgSecretImg" src="" alt="">
             <span id="pgSecretName">-</span>
+            <span class="pg-secret-magnifier" id="pgSecretMagnifier">🔍</span>
           </div>
         </div>
         <div class="pg-toolbar" id="pgToolbar">
@@ -409,6 +420,7 @@
           </div>
           <input type="range" id="pgBrushSize" min="2" max="28" value="6" title="Taille du pinceau">
           <button type="button" class="pg-tool-btn active" id="pgToolPen" title="Crayon">✏️</button>
+          <button type="button" class="pg-tool-btn" id="pgToolEyedropper" title="Pipette (choisir une couleur du dessin)">💧</button>
           <button type="button" class="pg-tool-btn" id="pgToolFill" title="Seau de remplissage">🪣</button>
           <button type="button" class="pg-tool-btn" id="pgToolEraser" title="Gomme">🧼</button>
           <button type="button" class="pg-action-btn" id="pgUndo" title="Annuler">↩️ Annuler</button>

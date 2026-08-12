@@ -285,6 +285,35 @@ html,body{
 .grid-mode-option .gm-label{ font-weight:700; font-size:0.92rem; display:block;}
 .grid-mode-option .gm-desc{ font-size:0.72rem; color:#777; display:block; }
 
+/* Sélecteur du nombre de manches (salon d'attente) */
+.rounds-picker{
+  background:#fff;
+  border:3px solid var(--pd-dark);
+  border-radius:14px;
+  padding:14px 16px;
+  margin-bottom:14px;
+}
+.rounds-picker h3{ text-align:center; color:var(--pd-blue-dark); font-size:1rem; margin:0 0 4px;}
+.rounds-picker .gen-hint{ text-align:center; font-size:0.8rem; color:#666; margin:0 0 12px;}
+.rounds-select{
+  display:block;
+  width:100%;
+  max-width:260px;
+  margin:0 auto;
+  padding:10px 12px;
+  font-family:'Baloo 2', cursive;
+  font-weight:700;
+  font-size:1rem;
+  color:var(--pd-dark);
+  background:var(--pd-cream);
+  border:3px solid var(--pd-dark);
+  border-radius:10px;
+  cursor:pointer;
+  text-align:center;
+  text-align-last:center;
+}
+.rounds-select:focus{ outline:3px solid var(--pd-blue); outline-offset:1px; }
+
 /* BUTTONS */
 .btn{
   font-family:'Baloo 2', cursive;
@@ -1626,6 +1655,7 @@ html,body{
   cursor:crosshair;
 }
 #pgCanvas.pg-readonly{ cursor:default; }
+#pgCanvas.pg-eyedropper-cursor{ cursor:crosshair; }
 .pg-secret-hint{
   position:absolute;
   left:10px;
@@ -1638,9 +1668,42 @@ html,body{
   align-items:center;
   gap:8px;
   box-shadow:0 4px 10px rgba(0,0,0,0.25);
+  cursor:pointer;
+  transition:transform 0.12s ease, box-shadow 0.12s ease;
+}
+.pg-secret-hint:hover{
+  transform:translateY(-2px);
+  box-shadow:0 6px 14px rgba(0,0,0,0.3);
 }
 .pg-secret-hint img{ width:44px; height:44px; object-fit:contain; }
 .pg-secret-hint span{ font-weight:800; font-size:0.85rem; color:var(--pd-red-dark); }
+.pg-secret-magnifier{
+  position:absolute;
+  right:-6px;
+  bottom:-6px;
+  width:22px;
+  height:22px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:var(--pd-yellow);
+  border:2px solid var(--pd-dark);
+  border-radius:50%;
+  font-size:0.75rem;
+  line-height:1;
+  box-shadow:0 2px 4px rgba(0,0,0,0.3);
+}
+
+/* Modale de zoom sur l'artwork secret (mode Dessine-moi un Pokémon) */
+.pg-zoom-box{ max-width:420px; }
+.pg-zoom-box img{
+  width:260px;
+  height:260px;
+  object-fit:contain;
+  margin:6px auto 10px;
+}
+.pg-zoom-box h3{ color:var(--pd-red); margin:0 0 4px; font-size:1.3rem; }
+.pg-zoom-box p{ margin:0 0 10px; color:#666; font-size:0.85rem; }
 
 .pg-toolbar{
   background:var(--pd-blue);

@@ -4,7 +4,26 @@ Jeu "Qui est-ce ?" sur le thème Pokémon, jouable en ligne à deux grâce à un
 système de lobby avec code à partager. L'hôte choisit les générations de
 Pokémon qui apparaissent sur la grille (Génération 1 à 9 disponibles).
 
-## Structure du projet
+## Nouveautés récentes
+
+- **Zoom sur le Pokémon secret (mode Dessine-moi un Pokémon)** : le
+  Dessinateur peut cliquer sur la vignette (ou sur l'icône 🔍) en bas à
+  gauche du canevas pour ouvrir l'artwork en grand et observer les
+  détails.
+- **Outil Pipette 💧** : dans la barre d'outils de dessin, cliquez sur la
+  pipette puis sur n'importe quel pixel déjà dessiné pour récupérer
+  exactement sa couleur comme couleur active (retour automatique à
+  l'outil crayon ensuite).
+- **Nombre de manches configurable** : dans le salon d'attente, l'hôte
+  choisit le nombre total de manches (Demi-Cercle, Devin'Mon, Dessine-moi
+  un Pokémon, Pokédex Target). Le menu déroulant ne propose que des
+  valeurs pair garantissant que chaque joueur joue exactement le même
+  nombre de fois (ex. avec 3 joueurs en Devin'Mon : seuls 6, 12, 18, 24,
+  30 sont proposés, jamais 8 ou 10). La liste se recalcule automatiquement
+  quand des joueurs rejoignent ou quittent le salon. Le mode "Qui est-ce ?"
+  n'a pas de notion de manches et n'est pas concerné.
+
+
 
 ```
 qui-est-ce-pokemon/

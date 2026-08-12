@@ -377,7 +377,7 @@
         var span = document.createElement("span");
         span.innerHTML =
           '<span class="gm-label">' + count + " joueurs</span>" +
-          '<span class="gm-desc">' + (count * 2) + " manches au total</span>";
+          '<span class="gm-desc">' + (count * 2) + " manches par défaut (ajustable)</span>";
         label.appendChild(input);
         label.appendChild(span);
         container.appendChild(label);
@@ -539,6 +539,32 @@
     socket.emit("set_grid_mode", { code: roomCode, gridMode: modeKey });
   }
 
+  // Construit (ou reconstruit) le menu déroulant du nombre de manches à
+  // partir des options valides envoyées par le serveur (déjà filtrées pour
+  // garantir l'équité entre joueurs). Le serveur reste la seule source de
+  // vérité : ce menu ne propose jamais de valeur invalide.
+  function buildRoundsSelect(options, current) {
+    var select = document.getElementById("roundsSelect");
+    if (!select) return;
+    select.innerHTML = "";
+    (options || []).forEach(function (v) {
+      var opt = document.createElement("option");
+      opt.value = v;
+      opt.textContent = v + " manches";
+      if (v === current) opt.selected = true;
+      select.appendChild(opt);
+    });
+  }
+
+  var roundsSelectEl = document.getElementById("roundsSelect");
+  if (roundsSelectEl) {
+    roundsSelectEl.addEventListener("change", function () {
+      var val = Number(roundsSelectEl.value);
+      if (!val) return;
+      socket.emit("set_total_rounds", { code: roomCode, totalRounds: val });
+    });
+  }
+
   function renderWaitingRoom(room) {
     document.getElementById("roomCodeDisplay").textContent = room.code;
     roomCode = room.code;
@@ -571,8 +597,19 @@
       })(n);
     }
 
+    // Nombre de fois que chaque joueur tiendra le rôle spécial (Guide,
+    // Dessinateur, etc.), déduit du nombre de manches choisi. Pour Demi-Cercle,
+    // le rôle alterne à chaque manche entre les 2 joueurs (donc /2).
+    var participantCountForRounds = roomMode === "demicercle" ? 2 : Math.max(connectedCount, 2);
+    var timesEach =
+      room.totalRounds && participantCountForRounds
+        ? Math.round(room.totalRounds / participantCountForRounds)
+        : 2;
+
     var hostPicker = document.getElementById("hostGenPicker");
     var hostGridModePicker = document.getElementById("hostGridModePicker");
+    var hostRoundsPicker = document.getElementById("hostRoundsPicker");
+    var guestRoundsInfo = document.getElementById("guestRoundsInfo");
     var hostPdtSubModePicker = document.getElementById("hostPdtSubModePicker");
     var dcHintHost = document.getElementById("dcModeHintHost");
     var dmHintHost = document.getElementById("dmModeHintHost");
@@ -582,10 +619,22 @@
     var startBtn = document.getElementById("btnStartGame");
     var waitMsg = document.getElementById("waitingForHostMsg");
 
+    document.getElementById("dcHintRounds").textContent = room.totalRounds || 10;
+    document.getElementById("dmHintTimes").textContent = timesEach;
+    document.getElementById("pgHintTimes").textContent = timesEach;
+    document.getElementById("pdtHintTimes").textContent = timesEach;
+
     if (isHost) {
       hostPicker.classList.remove("hidden");
       guestInfo.classList.add("hidden");
+      guestRoundsInfo.classList.add("hidden");
       buildGenGrid();
+      if (roomMode === "quiestce") {
+        hostRoundsPicker.classList.add("hidden");
+      } else {
+        hostRoundsPicker.classList.remove("hidden");
+        buildRoundsSelect(room.roundsOptions, room.totalRounds);
+      }
       if (roomMode === "demicercle") {
         hostGridModePicker.classList.add("hidden");
         hostPdtSubModePicker.classList.add("hidden");
@@ -643,6 +692,7 @@
     } else {
       hostPicker.classList.add("hidden");
       hostGridModePicker.classList.add("hidden");
+      hostRoundsPicker.classList.add("hidden");
       hostPdtSubModePicker.classList.add("hidden");
       dcHintHost.classList.add("hidden");
       dmHintHost.classList.add("hidden");
@@ -672,6 +722,13 @@
           .join(" ") +
         (roomMode === "quiestce" ? '<br><span class="tag">' + gridModeInfo.label + "</span>" : "") +
         (roomMode === "pokedextarget" ? '<br><span class="tag">' + pdtSubModeInfo.label + "</span>" : "");
+      if (roomMode === "quiestce") {
+        guestRoundsInfo.classList.add("hidden");
+      } else {
+        guestRoundsInfo.classList.remove("hidden");
+        guestRoundsInfo.innerHTML =
+          '<span class="tag">' + (room.totalRounds || "-") + " manches choisies par l'hôte</span>";
+      }
       startBtn.classList.add("hidden");
       waitMsg.classList.remove("hidden");
     }
@@ -890,6 +947,31 @@
 
   function closeInfoModal() {
     document.getElementById("modalRoot").innerHTML = "";
+  }
+
+  // Modale de zoom sur l'artwork du Pokémon secret, réservée au Dessinateur
+  // (mode Dessine-moi un Pokémon), pour observer les détails sans avoir à
+  // deviner à l'œil sur la petite vignette en bas à gauche du canevas.
+  function openPgSecretZoomModal() {
+    if (!pgState.isDrawer || !pgState.secret) return;
+    var modalRoot = document.getElementById("modalRoot");
+    modalRoot.innerHTML =
+      '<div class="modal-overlay" id="pgZoomOverlay">' +
+      '<div class="modal-box pg-zoom-box">' +
+      '<button type="button" class="info-modal-close" id="pgZoomClose">&times;</button>' +
+      '<img src="' + spriteUrl(pgState.secret.id) + '" alt="' + pgState.secret.name + '">' +
+      "<h3>" + pgState.secret.name + "</h3>" +
+      "<p>C'est le Pokémon que tu dois faire deviner, toi seul le vois.</p>" +
+      "</div></div>";
+    document.getElementById("pgZoomOverlay").addEventListener("click", function (e) {
+      if (e.target.id === "pgZoomOverlay") closeInfoModal();
+    });
+    document.getElementById("pgZoomClose").addEventListener("click", closeInfoModal);
+  }
+
+  var pgSecretHintEl = document.getElementById("pgSecretHint");
+  if (pgSecretHintEl) {
+    pgSecretHintEl.addEventListener("click", openPgSecretZoomModal);
   }
 
   function openPokemonInfoModal(id, frName) {
@@ -1874,6 +1956,30 @@
     return "#" + toHex(r) + toHex(g) + toHex(b);
   }
 
+  // Conversion inverse RGB (0-255) -> HSV (h:0-360, s/v:0-1), utilisée par
+  // l'outil pipette pour resynchroniser le sélecteur de couleur (rectangle
+  // saturation/luminosité + curseur de teinte) avec la couleur piochée sur
+  // le dessin.
+  function pgRgbToHsv(r, g, b) {
+    r /= 255;
+    g /= 255;
+    b /= 255;
+    var max = Math.max(r, g, b);
+    var min = Math.min(r, g, b);
+    var d = max - min;
+    var h = 0;
+    if (d !== 0) {
+      if (max === r) h = ((g - b) / d) % 6;
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h *= 60;
+      if (h < 0) h += 360;
+    }
+    var s = max === 0 ? 0 : d / max;
+    var v = max;
+    return { h: h, s: s, v: v };
+  }
+
   var pgCpSv = document.getElementById("pgCpSv");
   var pgCpCursor = document.getElementById("pgCpCursor");
   var pgCpHue = document.getElementById("pgCpHue");
@@ -1947,14 +2053,37 @@
     document.getElementById("pgToolPen").classList.toggle("active", tool === "pen");
     document.getElementById("pgToolFill").classList.toggle("active", tool === "fill");
     document.getElementById("pgToolEraser").classList.toggle("active", tool === "eraser");
+    var eyedropperBtn = document.getElementById("pgToolEyedropper");
+    if (eyedropperBtn) eyedropperBtn.classList.toggle("active", tool === "eyedropper");
+    if (pgCanvas) pgCanvas.classList.toggle("pg-eyedropper-cursor", tool === "eyedropper");
   }
 
   var btnPgToolPen = document.getElementById("pgToolPen");
   var btnPgToolFill = document.getElementById("pgToolFill");
   var btnPgToolEraser = document.getElementById("pgToolEraser");
+  var btnPgToolEyedropper = document.getElementById("pgToolEyedropper");
   if (btnPgToolPen) btnPgToolPen.addEventListener("click", function () { pgSetActiveTool("pen"); });
   if (btnPgToolFill) btnPgToolFill.addEventListener("click", function () { pgSetActiveTool("fill"); });
   if (btnPgToolEraser) btnPgToolEraser.addEventListener("click", function () { pgSetActiveTool("eraser"); });
+  if (btnPgToolEyedropper) btnPgToolEyedropper.addEventListener("click", function () { pgSetActiveTool("eyedropper"); });
+
+  // Pioche la couleur exacte du pixel cliqué sur le canevas et la définit
+  // comme couleur active (mise à jour du sélecteur HSV + de l'aperçu), puis
+  // revient automatiquement à l'outil crayon pour continuer à dessiner.
+  function pgPickColorAt(x, y) {
+    if (!pgCtx || !pgCanvas) return;
+    var px = Math.max(0, Math.min(pgCanvas.width - 1, Math.round(x)));
+    var py = Math.max(0, Math.min(pgCanvas.height - 1, Math.round(y)));
+    var data = pgCtx.getImageData(px, py, 1, 1).data;
+    var hsv = pgRgbToHsv(data[0], data[1], data[2]);
+    pgHue = hsv.h;
+    pgSat = hsv.s;
+    pgVal = hsv.v;
+    if (pgCpHue) pgCpHue.value = Math.round(pgHue);
+    if (pgCpSv) pgCpSv.style.backgroundColor = "hsl(" + Math.round(pgHue) + ", 100%, 50%)";
+    pgRefreshColorFromState();
+    pgSetActiveTool("pen");
+  }
 
   var pgBrushRange = document.getElementById("pgBrushSize");
   if (pgBrushRange) {
@@ -2083,6 +2212,10 @@
     if (!pgCanDraw()) return;
     evt.preventDefault();
     var pos = pgCanvasCoords(evt);
+    if (pgTool === "eyedropper") {
+      pgPickColorAt(pos.x, pos.y);
+      return;
+    }
     if (pgTool === "fill") {
       pgFloodFill(pgCtx, pos.x, pos.y, pgColor);
       pgState.actions.push({ type: "fill", x: pos.x, y: pos.y, color: pgColor });
