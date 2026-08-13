@@ -719,6 +719,26 @@ html,body{
 .mode-card .emoji{ font-size:1.8rem; }
 .mode-card h3{ margin:6px 0 4px; color:var(--pd-blue-dark); font-size:1rem; }
 .mode-card p{ font-size:0.8rem; color:#666; margin:0; }
+.mode-card.disabled{
+  cursor:not-allowed;
+  opacity:0.45;
+  filter:grayscale(0.4);
+}
+.mode-card.disabled:hover{ transform:none; }
+
+/* Version compacte utilisée dans le salon d'attente */
+.mode-choices-compact{
+  gap:10px;
+  margin:12px 0 6px;
+}
+.mode-choices-compact .mode-card{
+  width:150px;
+  padding:10px 12px;
+}
+.mode-choices-compact .mode-card .emoji{ font-size:1.4rem; }
+.mode-choices-compact .mode-card h3{ font-size:0.82rem; margin:4px 0 2px; }
+.mode-choices-compact .mode-card p{ font-size:0.68rem; }
+.mode-lock-hint{ color:#b5442e; }
 
 .dc-hint{
   max-width:520px;

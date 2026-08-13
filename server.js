@@ -12,6 +12,13 @@ const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sans caractères 
 const ROOM_TTL_MS = 1000 * 60 * 60 * 4; // 4h d'inactivité -> nettoyage
 const GRID_MODES = ["normal", "mega"];
 const GAME_MODES = ["quiestce", "demicercle", "devinmon", "pictionary", "pokedextarget", "statmax"];
+// Modes strictement limités à 2 joueurs : on ne peut pas y basculer depuis le
+// salon d'attente si un 3e joueur (ou plus) a déjà rejoint le lobby.
+const TWO_PLAYER_ONLY_MODES = ["quiestce", "demicercle"];
+// Bornes communes à tous les modes "configurables" (Devin'Mon, Dessine-moi un
+// Pokémon, Pokédex Target, La Stat la plus haute) : 2 à 6 joueurs.
+const CONFIGURABLE_MODE_MIN_PLAYERS = 2;
+const CONFIGURABLE_MODE_MAX_PLAYERS = 6;
 const DEMI_CERCLE_DEFAULT_ROUNDS = 10;
 const STATMAX_DEFAULT_ROUNDS = 10;
 // Plafond absolu du nombre de manches proposé dans le sélecteur du lobby.
@@ -736,6 +743,10 @@ io.on("connection", (socket) => {
       gridMode: "normal",
       pdtSubMode: "number",
       maxPlayers: cap,
+      // Nombre de joueurs "souhaité" pour un mode configurable, mémorisé pour
+      // pouvoir le restaurer si l'hôte bascule temporairement vers un mode
+      // limité à 2 joueurs puis revient à un mode configurable ensuite.
+      preferredMaxPlayers: cleanMode === "quiestce" || cleanMode === "demicercle" ? CONFIGURABLE_MODE_MAX_PLAYERS : cap,
       totalRounds: null,
       status: "lobby",
       players: {
@@ -846,6 +857,46 @@ io.on("connection", (socket) => {
     if (!room || !info || info.playerNum !== 1) return; // seul l'hôte choisit
     if (!GRID_MODES.includes(gridMode)) return;
     room.gridMode = gridMode;
+    touch(room);
+    io.to(code).emit("players_update", roomSummary(room));
+  });
+
+  // Changement du mode de jeu par l'hôte, depuis le salon d'attente (avant
+  // le lancement de la partie uniquement). Si le mode ciblé est limité à 2
+  // joueurs (Qui est-ce ?, Demi-Cercle), le changement est refusé dès qu'un
+  // 3e joueur ou plus a déjà rejoint le lobby (slot occupé, connecté ou non).
+  socket.on("set_mode", ({ code, mode }) => {
+    const room = rooms.get(code);
+    const info = socketToRoom.get(socket.id);
+    if (!room || !info || info.playerNum !== 1) return; // seul l'hôte choisit
+    if (room.status !== "lobby") return; // impossible une fois la partie lancée
+    if (GAME_MODES.indexOf(mode) === -1) return;
+    if (mode === room.mode) return;
+
+    const occupied = occupiedPlayerNums(room).length;
+    if (TWO_PLAYER_ONLY_MODES.indexOf(mode) !== -1 && occupied > 2) {
+      socket.emit("error_message", {
+        message: "Ce mode se joue uniquement à 2 : le lobby compte déjà " + occupied + " joueurs.",
+      });
+      return;
+    }
+
+    room.mode = mode;
+    if (TWO_PLAYER_ONLY_MODES.indexOf(mode) !== -1) {
+      room.maxPlayers = 2;
+    } else {
+      // Mode configurable : on restaure au moins le nombre de joueurs déjà
+      // présents dans le lobby, et au mieux la capacité précédemment choisie
+      // par l'hôte pour un mode configurable (mémorisée dans
+      // preferredMaxPlayers), plutôt que de rester bloqué à 2 si l'hôte est
+      // passé temporairement par un mode limité à 2 joueurs.
+      const wanted = Math.max(occupied, room.preferredMaxPlayers || CONFIGURABLE_MODE_MAX_PLAYERS);
+      room.maxPlayers = Math.max(CONFIGURABLE_MODE_MIN_PLAYERS, Math.min(CONFIGURABLE_MODE_MAX_PLAYERS, wanted));
+      room.preferredMaxPlayers = room.maxPlayers;
+    }
+    // Les réglages spécifiques à certains modes n'ont pas forcément de sens
+    // dans le nouveau mode ; ensureValidTotalRounds() recalculera un nombre
+    // de manches valide au prochain roomSummary().
     touch(room);
     io.to(code).emit("players_update", roomSummary(room));
   });

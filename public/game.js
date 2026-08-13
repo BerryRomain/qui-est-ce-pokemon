@@ -66,6 +66,18 @@
   var roomPlayersCache = null;
   var selectedCreateMode = "quiestce";
   var selectedDevinmonPlayerCount = 2;
+
+  // Métadonnées des modes de jeu, réutilisées pour l'écran de création et le
+  // sélecteur de mode du salon d'attente. twoPlayerOnly = true pour les modes
+  // qui ne peuvent pas accueillir plus de 2 joueurs (Qui est-ce ?, Demi-Cercle).
+  var MODE_INFO = {
+    quiestce: { emoji: "🕵️", title: "Qui est-ce ?", desc: "Grille de 48 Pokémon, devine le secret de l'adversaire.", twoPlayerOnly: true },
+    demicercle: { emoji: "🌗", title: "Demi-Cercle", desc: "10 rounds : place le curseur, devine l'avis secret du Maître du round.", twoPlayerOnly: true },
+    devinmon: { emoji: "🧩", title: "Devin'Mon", desc: "2 à 6 joueurs. Un Guide donne des indices, les autres devinent avec le moins d'indices possible.", twoPlayerOnly: false },
+    pictionary: { emoji: "🎨", title: "Dessine-moi un Pokémon", desc: "2 à 6 joueurs. Un dessinateur, les autres devinent en direct dans le chat.", twoPlayerOnly: false },
+    pokedextarget: { emoji: "🎯", title: "Pokédex Target", desc: "2 à 6 joueurs. Vise le bon numéro ou le bon Pokémon : le moins d'écart possible gagne !", twoPlayerOnly: false },
+    statmax: { emoji: "📊", title: "La Stat la plus haute", desc: "2 à 6 joueurs. Un Pokémon s'affiche : clique le plus vite possible sur sa statistique de base la plus élevée !", twoPlayerOnly: false },
+  };
   var selectedPdtSubMode = "number";
   var availableGenerations = []; // [{id,count}]
   var selectedGenerations = [1];
@@ -615,6 +627,36 @@
     });
   }
 
+  // Construit le sélecteur de mode du salon d'attente (hôte uniquement).
+  // Les modes limités à 2 joueurs sont désactivés (griséss, non cliquables)
+  // dès qu'un 3e joueur ou plus occupe un slot du lobby.
+  function buildWaitingModePicker(currentMode, filledCount) {
+    var container = document.getElementById("waitingModeChoices");
+    var lockHint = document.getElementById("modeLockHint");
+    if (!container) return;
+    container.innerHTML = "";
+    var anyLocked = false;
+    Object.keys(MODE_INFO).forEach(function (key) {
+      var info = MODE_INFO[key];
+      var locked = info.twoPlayerOnly && filledCount > 2 && key !== currentMode;
+      if (locked) anyLocked = true;
+      var card = document.createElement("div");
+      card.className = "mode-card" + (key === currentMode ? " checked" : "") + (locked ? " disabled" : "");
+      card.innerHTML =
+        '<div class="emoji">' + info.emoji + "</div>" +
+        "<h3>" + info.title + "</h3>" +
+        "<p>" + info.desc + "</p>";
+      if (!locked) {
+        card.addEventListener("click", function () {
+          if (key === roomMode) return;
+          socket.emit("set_mode", { code: roomCode, mode: key });
+        });
+      }
+      container.appendChild(card);
+    });
+    lockHint.classList.toggle("hidden", !anyLocked);
+  }
+
   function renderWaitingRoom(room) {
     document.getElementById("roomCodeDisplay").textContent = room.code;
     roomCode = room.code;
@@ -677,6 +719,10 @@
     document.getElementById("smHintRounds").textContent = room.totalRounds || 10;
 
     if (isHost) {
+      var hostModePicker = document.getElementById("hostModePicker");
+      hostModePicker.classList.remove("hidden");
+      buildWaitingModePicker(roomMode, filledCount);
+
       hostPicker.classList.remove("hidden");
       guestInfo.classList.add("hidden");
       guestRoundsInfo.classList.add("hidden");
@@ -757,6 +803,7 @@
           : "Démarrer la partie";
       waitMsg.classList.add("hidden");
     } else {
+      document.getElementById("hostModePicker").classList.add("hidden");
       hostPicker.classList.add("hidden");
       hostGridModePicker.classList.add("hidden");
       hostRoundsPicker.classList.add("hidden");
